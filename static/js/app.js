@@ -853,8 +853,14 @@
         <input class="input" name="description" value="${product && product.description ? product.description : ""}"/></div>
       <div class="field"><label>Size family (optional — share across sizes of the same item)</label>
         <input class="input" name="family_key" value="${product && product.family_key ? product.family_key : ""}"/></div>
-      ${editing ? "" : `<div class="field"><label>Images (minimum 5, white background)</label>
-        <input class="input" name="images" type="file" accept="image/*" multiple capture="environment"/></div>`}
+      ${editing ? "" : `<div class="field upload-field"><label>Product images</label>
+        <div class="upload-hint">Choose at least <b class="min-n">3</b> photos (max <b class="max-n">10</b>) — plain background, a few angles.</div>
+        <input class="file-real" name="images" type="file" accept="image/*" multiple hidden/>
+        <div class="upload-actions">
+          <button type="button" class="btn ghost pick-files" style="width:auto">\uD83D\uDDBC\uFE0F Choose images</button>
+          <span class="upload-count muted">No images selected</span>
+        </div>
+        <div class="preview-grid"></div></div>`}
       <button class="btn primary save">${editing ? "Save changes" : "Save product"}</button>
       ${editing ? '<button class="btn danger" style="margin-top:10px">Delete product</button>' : ""}
       <div class="msg" style="color:var(--danger);margin-top:12px"></div>
@@ -869,6 +875,53 @@
       sel.appendChild(o);
     });
     const msg = form.querySelector(".msg");
+
+    // ---- Image picker (gallery/files, previews, remove, count) -------------
+    let MIN_IMG = 3, MAX_IMG = 10;
+    const selected = []; // managed list of File objects
+    if (!editing) {
+      try {
+        const info = await api.get("/api/settings/info");
+        MIN_IMG = info.min_product_images || 3;
+        MAX_IMG = info.max_product_images || 10;
+        form.querySelector(".min-n").textContent = MIN_IMG;
+        form.querySelector(".max-n").textContent = MAX_IMG;
+      } catch (_) {}
+      const fileInput = form.querySelector(".file-real");
+      const grid = form.querySelector(".preview-grid");
+      const countEl = form.querySelector(".upload-count");
+
+      const renderPreviews = () => {
+        grid.innerHTML = "";
+        selected.forEach((file, i) => {
+          const url = URL.createObjectURL(file);
+          const cell = el(`<div class="preview-cell">
+            <img src="${url}" alt=""/>
+            <button type="button" class="preview-rm" title="Remove">\u00D7</button></div>`);
+          cell.querySelector("img").onload = () => URL.revokeObjectURL(url);
+          cell.querySelector(".preview-rm").onclick = () => { selected.splice(i, 1); renderPreviews(); };
+          grid.appendChild(cell);
+        });
+        const n = selected.length;
+        countEl.textContent = n === 0 ? "No images selected"
+          : `${n} image${n === 1 ? "" : "s"} selected` + (n < MIN_IMG ? ` — need at least ${MIN_IMG}` : "");
+        countEl.classList.toggle("warn", n > 0 && n < MIN_IMG);
+        countEl.classList.toggle("ok", n >= MIN_IMG && n <= MAX_IMG);
+      };
+
+      form.querySelector(".pick-files").onclick = () => fileInput.click();
+      fileInput.onchange = () => {
+        for (const f of fileInput.files) {
+          if (!f.type.startsWith("image/")) continue;
+          if (selected.some((x) => x.name === f.name && x.size === f.size)) continue; // dedupe
+          if (selected.length >= MAX_IMG) { msg.textContent = `You can upload at most ${MAX_IMG} images.`; break; }
+          selected.push(f);
+        }
+        fileInput.value = ""; // allow re-picking the same file later
+        renderPreviews();
+      };
+      renderPreviews();
+    }
 
     form.querySelector(".save").onclick = async () => {
       msg.textContent = "";
@@ -885,6 +938,14 @@
             family_key: form.querySelector('[name="family_key"]').value,
           });
         } else {
+          if (selected.length < MIN_IMG) {
+            msg.textContent = `Please upload at least ${MIN_IMG} product images.`;
+            return;
+          }
+          if (selected.length > MAX_IMG) {
+            msg.textContent = `You can upload at most ${MAX_IMG} product images.`;
+            return;
+          }
           const fd = new FormData();
           fd.append("name", form.querySelector('[name="name"]').value);
           fd.append("category_id", sel.value);
@@ -895,8 +956,7 @@
           fd.append("min_stock_level", form.querySelector('[name="min_stock_level"]').value);
           fd.append("description", form.querySelector('[name="description"]').value);
           fd.append("family_key", form.querySelector('[name="family_key"]').value);
-          const files = form.querySelector('[name="images"]').files;
-          for (const f of files) fd.append("images", f);
+          selected.forEach((f) => fd.append("images", f));
           await api.form("/api/products", fd);
         }
         go("products");

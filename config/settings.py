@@ -44,12 +44,13 @@ BILL_NUMBER_PREFIX: str = _env("RESVI_BILL_NUMBER_PREFIX", "BILL-")
 BILL_NUMBER_PADDING: int = int(_env("RESVI_BILL_NUMBER_PADDING", "6"))
 
 # --- Product image rules -----------------------------------------------------
-MIN_PRODUCT_IMAGES: int = int(_env("RESVI_MIN_PRODUCT_IMAGES", "5"))
+MIN_PRODUCT_IMAGES: int = int(_env("RESVI_MIN_PRODUCT_IMAGES", "3"))
+MAX_PRODUCT_IMAGES: int = int(_env("RESVI_MAX_PRODUCT_IMAGES", "10"))
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "0.6.0-inventory"  # inventory, low-stock, payment, tiered scan + face guard
+APP_VERSION: str = "0.6.1-upload"  # image picker (gallery/files), previews, min 3/max 10
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

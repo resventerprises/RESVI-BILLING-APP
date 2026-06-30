@@ -117,4 +117,3 @@ utils/     responses, validators, images     scripts/   smoke_test.py, api_test.
 - **Android (final target):** the fat-offline client implements `EmbeddingProvider`
   (MobileCLIP/TFLite) + a local `VectorStore`, reuses this REST contract for
   sync, and lifts the services unchanged.
-"# RESVI-BILLING-APP" 

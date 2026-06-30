@@ -385,3 +385,22 @@ img { display: block; }
 
 /* Dashboard red accent for out-of-stock */
 .stat-card.accent-red { border-top-color: #ef4444; }
+
+/* ---------- Product image upload ---------- */
+.upload-hint { font-size: 13px; color: var(--muted); margin: 2px 0 10px; }
+.upload-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.upload-count { font-size: 13px; }
+.upload-count.warn { color: #b45309; font-weight: 600; }
+.upload-count.ok { color: #15803d; font-weight: 600; }
+.preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px; margin-top: 12px; }
+.preview-cell { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: var(--surface-2); }
+.preview-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.preview-rm {
+  position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 50%;
+  border: none; background: rgba(11,15,15,.72); color: #fff; font-size: 16px; line-height: 1;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.preview-rm:hover { background: #b91c1c; }
+@media (min-width: 820px) {
+  .preview-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+}

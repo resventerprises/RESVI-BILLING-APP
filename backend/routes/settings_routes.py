@@ -43,6 +43,7 @@ def info():
             "version": settings.APP_VERSION,
             "database": "sqlite" if _sqlite_path() else "external",
             "min_product_images": settings.MIN_PRODUCT_IMAGES,
+            "max_product_images": settings.MAX_PRODUCT_IMAGES,
             "recognizer": recognizer.provider.model_id,
             "indexed_vectors": store.size(),
             "product_count": product_count,

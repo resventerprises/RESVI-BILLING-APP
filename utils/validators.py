@@ -39,6 +39,10 @@ def validate_image_extension(filename: str) -> None:
 def validate_min_images(count: int) -> None:
     if count < settings.MIN_PRODUCT_IMAGES:
         raise ValidationError(
-            f"At least {settings.MIN_PRODUCT_IMAGES} images are required "
+            f"Please upload at least {settings.MIN_PRODUCT_IMAGES} product images."
+        )
+    if count > settings.MAX_PRODUCT_IMAGES:
+        raise ValidationError(
+            f"You can upload at most {settings.MAX_PRODUCT_IMAGES} product images "
             f"(received {count})."
         )
