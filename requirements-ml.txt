@@ -1,0 +1,10 @@
+# Optional ML extras for real recognition (DINOv2). Heavy; install when ready
+# to move past the dummy provider:  pip install -r requirements-ml.txt
+# Then set RESVI_EMBEDDING_PROVIDER=dinov2
+torch>=2.2
+torchvision>=0.17
+transformers>=4.40
+faiss-cpu>=1.8        # swap NumpyVectorStore -> FaissVectorStore at scale
+rembg>=2.0           # optional background removal (set RESVI_REMOVE_BACKGROUND=true)
+onnxruntime>=1.17    # for exporting/serving a quantized model later
+opencv-python-headless>=4.9  # optional: enables face/non-product rejection in scanning
