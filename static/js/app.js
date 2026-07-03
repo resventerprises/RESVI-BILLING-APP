@@ -253,6 +253,11 @@
       return t;
     };
     actions.appendChild(make("Scan barcode", "\uD83D\uDCF3", "scan", true));
+    // Voice Search: opens the scan screen and auto-starts the mic.
+    const voiceTile = el(`<button class="tile primary">
+      <div class="ico">\uD83C\uDF99\uFE0F</div><div class="label">Voice Search</div></button>`);
+    voiceTile.onclick = () => go("scan", { voice: "1" });
+    actions.appendChild(voiceTile);
     actions.appendChild(make("Products", "\uD83D\uDCE6", "products"));
     actions.appendChild(make("Inventory", "\uD83D\uDCCA", "inventory"));
     actions.appendChild(make("Categories", "\uD83D\uDDC2\uFE0F", "categories"));
@@ -284,6 +289,8 @@
       c.onclick = () => go(target);
       return c;
     };
+    quick.appendChild(qa("Scan barcode", "\uD83D\uDCF3", "scan", "Scan or type a barcode to bill"));
+    quick.appendChild(qa("Voice search", "\uD83C\uDF99\uFE0F", "scan?voice=1", "Speak a product name to add it"));
     quick.appendChild(qa("Add product", "\u2795", "product", "Enroll a new product with photos"));
     quick.appendChild(qa("Products", "\uD83D\uDCE6", "products", "Browse and manage your catalogue"));
     quick.appendChild(qa("Inventory", "\uD83D\uDCCA", "inventory", "Stock levels, stock-in and history"));
@@ -354,7 +361,7 @@
   }
 
   // ---- Barcode scanner (PRIMARY billing flow) -------------------------------
-  route("scan", async () => {
+  route("scan", async (params = {}) => {
     view.appendChild(topbar("Barcode Scanner", { back: true }));
     const scr = el(`<div class="scan-screen">
       <div class="scan-wrap bc-wrap">
@@ -592,6 +599,10 @@
         };
         try { rec.start(); } catch (_) { stopListening(); }
       };
+      // Auto-open voice search when launched from the home "Voice Search" tile.
+      if (params.voice === "1") {
+        setTimeout(() => micBtn.click(), 400);
+      }
     }
 
     // Camera scanner via html5-qrcode (optional; manual/USB always works).
