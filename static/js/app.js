@@ -1068,9 +1068,9 @@
         <div class="import-cols muted">Columns: product_name, category, price, quantity, barcode, min_stock, image_name</div>
       </div>
       <div class="dropzone">
-        <div class="dz-inner">\uD83D\uDCC4 <b>Drag &amp; drop</b> your .xlsx or .csv here, or <span class="dz-browse">browse</span>
+        <div class="dz-inner">\uD83D\uDCC4 <b>Tap to choose</b> or drag a .xlsx / .csv file, or <span class="dz-browse">browse</span>
           <div class="dz-file muted"></div></div>
-        <input class="dz-input" type="file" accept=".xlsx,.csv" hidden/>
+        <input class="dz-input" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,*/*" hidden/>
       </div>
       <div class="field"><label>Product images (.zip) \u2014 optional</label>
         <input class="input zip" type="file" accept=".zip"/>

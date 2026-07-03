@@ -1,8 +1,9 @@
+# Core runtime — keeps the prototype light and runnable on any laptop.
 Flask>=3.0,<4.0
 SQLAlchemy>=2.0,<3.0
 numpy>=1.26
 Pillow>=10.0
 python-dotenv>=1.0
-openpyxl>=3.1
-reportlab>=4.0
-gunicorn>=21.0
+openpyxl>=3.1        # Excel product import + template
+reportlab>=4.0       # Code128 barcode label PDFs
+gunicorn>=21.0       # production WSGI server (Render start command)

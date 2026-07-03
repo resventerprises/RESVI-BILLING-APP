@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "0.8.2-deps"  # add openpyxl/reportlab/gunicorn to requirements
+APP_VERSION: str = "0.8.3-responsive"  # tablet layout, touch targets, sidebar spacing, mobile import
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 
