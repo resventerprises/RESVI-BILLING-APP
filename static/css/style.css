@@ -644,3 +644,16 @@ table { border-collapse: collapse; width: 100%; }
 .ac-ph { width: 36px; height: 36px; border-radius: 7px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 18px; }
 .ac-name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ac-price { font-weight: 700; font-size: 14px; white-space: nowrap; }
+
+/* ---------- Import dropzone as a tappable label (Android WebView safe) ---------- */
+.dropzone { display: block; cursor: pointer; }
+.dropzone .dz-input {
+  /* Visible but unobtrusive: a real tappable input, not display:none (which
+     some Android WebViews refuse to open). */
+  display: block; width: 100%; margin-top: 10px; font-size: 15px;
+  padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: #fff;
+}
+.dz-inner { pointer-events: none; }   /* taps fall through to the label/input */
+
+/* Scan search hint line */
+.bc-hint { text-align: center; font-size: 12px; margin-top: 8px; }

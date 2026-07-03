@@ -367,10 +367,12 @@
           <button class="btn ghost stop" disabled>\u25A0 Stop</button>
         </div>
         <div class="bc-manual">
-          <input class="input bc-input" inputmode="numeric" placeholder="Scan USB / type barcode / say a name"/>
-          <button class="btn ghost sm bc-mic" title="Voice search" style="width:auto">\uD83C\uDF99\uFE0F</button>
+          <input class="input bc-input" type="text" inputmode="text" autocomplete="off"
+                 placeholder="\uD83D\uDD0D Search product or barcode" aria-label="Search product or barcode"/>
+          <button class="btn ghost sm bc-mic" title="Voice search" aria-label="Voice search" style="width:auto">\uD83C\uDF99\uFE0F</button>
           <button class="btn primary sm bc-go" style="width:auto">Find</button>
         </div>
+        <div class="bc-hint muted">\uD83D\uDCF7 Scan a barcode \u00B7 \u2328\uFE0F type a name/code \u00B7 \uD83C\uDF99\uFE0F tap mic to speak</div>
       </div>
       <div class="billpanel">
         <div class="billpanel-head"><span>Current bill</span></div>
@@ -535,28 +537,60 @@
       refreshBill();
     });
 
-    // Voice product search (Web Speech API).
+    // Voice product search (Web Speech API) — tuned for mobile/tablet.
     const micBtn = scr.querySelector(".bc-mic");
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) {
       micBtn.disabled = true;
-      micBtn.title = "Voice search not supported in this browser";
+      micBtn.title = "Voice search needs Chrome (and HTTPS)";
     } else {
-      let listening = false;
+      let listening = false, rec = null;
+      const stopListening = () => { listening = false; micBtn.classList.remove("listening"); try { rec && rec.stop(); } catch (_) {} };
       micBtn.onclick = () => {
-        if (listening) return;
-        const rec = new SR();
-        rec.lang = "en-IN"; rec.interimResults = false; rec.maxAlternatives = 3;
+        if (listening) { stopListening(); return; }   // tap again to cancel
+        rec = new SR();
+        rec.lang = "en-IN";
+        rec.interimResults = true;    // mobile often only emits interim results
+        rec.continuous = false;
+        rec.maxAlternatives = 3;
         listening = true; micBtn.classList.add("listening");
-        setStatus("scanning", "Listening\u2026"); flashToast(toast, "Listening\u2026");
+        setStatus("scanning", "Listening\u2026 speak the product name"); flashToast(toast, "Listening\u2026");
+        let best = "";
         rec.onresult = (ev) => {
-          const said = cleanTerm(ev.results[0][0].transcript);
-          bcInput.value = said;
-          lookupByName(said);
+          // Take the latest transcript (interim or final).
+          for (let i = ev.resultIndex; i < ev.results.length; i++) {
+            best = ev.results[i][0].transcript;
+            bcInput.value = best.trim();
+            if (ev.results[i].isFinal) {
+              const said = cleanTerm(best).toUpperCase();
+              bcInput.value = said;
+              stopListening();
+              lookupByName(said);
+              return;
+            }
+          }
         };
-        rec.onerror = () => { Sound.error(); setStatus("error", "Couldn't hear that \u2014 try again."); };
-        rec.onend = () => { listening = false; micBtn.classList.remove("listening"); };
-        try { rec.start(); } catch (_) { listening = false; micBtn.classList.remove("listening"); }
+        rec.onerror = (e) => {
+          stopListening();
+          if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+            setStatus("error", "Microphone blocked. Allow mic access for this site.");
+          } else if (e.error === "no-speech") {
+            setStatus("error", "Didn't catch that \u2014 tap \uD83C\uDF99\uFE0F and speak again.");
+          } else {
+            setStatus("error", "Voice error (" + e.error + "). Type the name instead.");
+          }
+          Sound.error();
+        };
+        rec.onend = () => {
+          // If it ended with an interim result but no final, use what we have.
+          if (listening) {
+            stopListening();
+            const said = cleanTerm(best).toUpperCase();
+            if (said) { bcInput.value = said; lookupByName(said); }
+            else setStatus("error", "Didn't catch that \u2014 tap \uD83C\uDF99\uFE0F to retry.");
+          }
+        };
+        try { rec.start(); } catch (_) { stopListening(); }
       };
     }
 
@@ -608,7 +642,7 @@
           <label class="cont-toggle"><input type="checkbox" class="cont" checked/> Auto-scan</label>
         </div>
         <div class="picker">
-          <input class="input picker-search" placeholder="Search products to add\u2026"/>
+          <input class="input picker-search" type="text" inputmode="text" enterkeyhint="search" placeholder="\uD83D\uDD0D Search products to add\u2026"/>
           <div class="picker-list"></div>
         </div>
         <div class="bill-list"></div>
@@ -1048,7 +1082,7 @@
   function openManual(res, refreshBill) {
     const m = el(`<div class="modal"><h3>Couldn\u2019t identify the exact product</h3>
       <div class="sub">Pick the correct one, or search.</div>
-      <input class="input" placeholder="Search by name or code" style="margin-bottom:12px"/>
+      <input class="input" type="text" inputmode="text" enterkeyhint="search" placeholder="\uD83D\uDD0D Search product / barcode / category" style="margin-bottom:12px"/>
       <div class="list"></div></div>`);
     const list = m.querySelector(".list");
     const input = m.querySelector("input");
@@ -1119,7 +1153,7 @@
     view.appendChild(topbar("Products"));
     const s = screen();
     const head = el(`<div class="searchbar">
-      <input class="input" placeholder="Search by name or code"/>
+      <input class="input" type="text" inputmode="text" enterkeyhint="search" placeholder="\uD83D\uDD0D Search product / barcode / category"/>
       <div class="btn-row" style="margin-top:10px">
         <select class="input"><option value="">All categories</option></select>
         <button class="btn ghost sm import-btn" style="width:auto;white-space:nowrap">\u2B07 Import</button>
@@ -1201,11 +1235,12 @@
         <button class="btn ghost dl-tpl" style="width:auto">\u2B07 Download template (.xlsx)</button>
         <div class="import-cols muted">Columns: product_name, category, price, quantity, barcode, min_stock, image_name</div>
       </div>
-      <div class="dropzone">
-        <div class="dz-inner">\uD83D\uDCC4 <b>Tap to choose</b> or drag a .xlsx / .csv file, or <span class="dz-browse">browse</span>
+      <label class="dropzone" for="dz-file-input">
+        <div class="dz-inner">\uD83D\uDCC4 <b>Tap to choose file</b><br/>.xlsx, .xls or .csv
           <div class="dz-file muted"></div></div>
-        <input class="dz-input" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,*/*" hidden/>
-      </div>
+        <input id="dz-file-input" class="dz-input" type="file"
+               accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,*/*"/>
+      </label>
       <div class="field"><label>Product images (.zip) \u2014 optional</label>
         <input class="input zip" type="file" accept=".zip"/>
         <div class="upload-hint">Image names must match the <b>image_name</b> column (or already be in uploads/products/).</div></div>
@@ -1227,8 +1262,7 @@
     let chosenFile = null;
 
     const setFile = (f) => { chosenFile = f; dzFile.textContent = f ? ("Selected: " + f.name) : ""; };
-    box.querySelector(".dz-browse").onclick = () => dzInput.click();
-    dz.onclick = (e) => { if (!e.target.closest(".dz-browse")) dzInput.click(); };
+    // The <label for> opens the native picker (reliable in Android WebView).
     dzInput.onchange = () => setFile(dzInput.files[0]);
     ["dragover", "dragenter"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("over"); }));
     ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("over"); }));
