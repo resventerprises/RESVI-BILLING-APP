@@ -7,3 +7,4 @@ python-dotenv>=1.0
 openpyxl>=3.1        # Excel product import + template
 reportlab>=4.0       # Code128 barcode label PDFs
 gunicorn>=21.0       # production WSGI server (Render start command)
+psycopg[binary]>=3.1 # PostgreSQL driver (Render multi-device shared DB)

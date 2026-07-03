@@ -58,7 +58,9 @@ class ProductRepository(CRUDBase[Product]):
         if term:
             like = f"%{term.strip()}%"
             stmt = stmt.where(
-                (Product.product_name.ilike(like)) | (Product.product_code.ilike(like))
+                (Product.product_name.ilike(like))
+                | (Product.product_code.ilike(like))
+                | (Product.barcode.ilike(like))
             )
         stmt = stmt.order_by(Product.product_name).limit(limit)
         return session.scalars(stmt).all()

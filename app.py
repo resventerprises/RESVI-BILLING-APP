@@ -45,6 +45,37 @@ def create_app() -> Flask:
     settings.ensure_runtime_dirs()
     init_db()
 
+    # --- Startup diagnostics: which database, and does data persist? ---------
+    import logging
+    from sqlalchemy import func, select
+    from database.db import _db_url, _is_sqlite
+    from database.models import Product
+
+    logging.basicConfig(level=logging.INFO)
+    _log = logging.getLogger("resvi.startup")
+    backend = "SQLite (EPHEMERAL on Render — data is wiped on restart!)" if _is_sqlite else "PostgreSQL (persistent, shared across devices)"
+    # Mask any password in the URL before logging.
+    _safe_url = _db_url
+    if "@" in _safe_url and "://" in _safe_url:
+        _scheme, _rest = _safe_url.split("://", 1)
+        if "@" in _rest:
+            _creds, _host = _rest.split("@", 1)
+            _user = _creds.split(":", 1)[0] if ":" in _creds else _creds
+            _safe_url = f"{_scheme}://{_user}:***@{_host}"
+    try:
+        with session_scope() as _s:
+            _count = _s.scalar(select(func.count(Product.id))) or 0
+    except Exception as _e:  # noqa: BLE001
+        _count = f"unknown ({_e})"
+    _log.info("=" * 60)
+    _log.info("RESVI %s starting", settings.APP_VERSION)
+    _log.info("Database backend : %s", backend)
+    _log.info("Database URL     : %s", _safe_url)
+    _log.info("Products in DB   : %s", _count)
+    if _is_sqlite:
+        _log.info("NOTE: set RESVI_DATABASE_URL to a PostgreSQL URL for permanent, multi-device data.")
+    _log.info("=" * 60)
+
     app = Flask(
         __name__,
         static_folder=str(settings.STATIC_DIR),

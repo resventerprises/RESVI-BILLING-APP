@@ -15,17 +15,30 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from config import settings
 
+# Render (and Heroku) hand out DATABASE_URL as 'postgres://...', but SQLAlchemy
+# 2.x requires the 'postgresql://' scheme, and we pin the psycopg (v3) driver.
+_db_url = settings.DATABASE_URL
+if _db_url.startswith("postgres://"):
+    _db_url = _db_url.replace("postgres://", "postgresql+psycopg://", 1)
+elif _db_url.startswith("postgresql://") and "+psycopg" not in _db_url:
+    _db_url = _db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
+_is_sqlite = _db_url.startswith("sqlite")
+
 # SQLite needs check_same_thread=False to be used from Flask's worker threads.
 # Other backends ignore this connect arg.
-_connect_args = (
-    {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
-)
+_connect_args = {"check_same_thread": False} if _is_sqlite else {}
+
+# pool_pre_ping avoids stale-connection errors on managed Postgres (Render can
+# drop idle connections); harmless for SQLite.
+_engine_kwargs = {} if _is_sqlite else {"pool_pre_ping": True, "pool_recycle": 300}
 
 engine = create_engine(
-    settings.DATABASE_URL,
+    _db_url,
     echo=settings.SQL_ECHO,
     future=True,
     connect_args=_connect_args,
+    **_engine_kwargs,
 )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

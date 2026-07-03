@@ -109,7 +109,7 @@
   };
 
   // ---- Desktop shell --------------------------------------------------------
-  const DESKTOP_QUERY = window.matchMedia("(min-width: 820px)");
+  const DESKTOP_QUERY = window.matchMedia("(min-width: 768px)");
   function isDesktop() { return DESKTOP_QUERY.matches; }
 
   function renderSidebar(active) {
@@ -121,7 +121,7 @@
     const logo = el(`<button class="side-logo">
       <img src="/static/img/logo.png" alt="RESVI"/>
       <span class="side-tag">Retail Products Store</span></button>`);
-    logo.onclick = () => go("home");
+    logo.onclick = () => { closeDrawer(); go("home"); };
     sb.appendChild(logo);
     const nav = el(`<nav class="side-nav"></nav>`);
     [
@@ -134,9 +134,9 @@
       ["ai-scan", "AI Scanner (Beta)", "\uD83E\uDDEA"],
       ["settings", "Settings", "\u2699\uFE0F"],
     ].forEach(([r, label, ico]) => {
-      const b = el(`<button class="side-item ${act === r ? "active" : ""}">
-        <span class="si-ico">${ico}</span><span>${label}</span></button>`);
-      b.onclick = () => go(r);
+      const b = el(`<button class="side-item ${act === r ? "active" : ""}" title="${label}">
+        <span class="si-ico">${ico}</span><span class="si-label">${label}</span></button>`);
+      b.onclick = () => { closeDrawer(); go(r); };
       nav.appendChild(b);
     });
     sb.appendChild(nav);
@@ -156,6 +156,7 @@
     if (name !== "scan") stopBarcodeScanner();
     if (name !== "ai-scan") stopCamera();
     renderSidebar(name);
+    closeDrawer(); // any navigation closes the mobile drawer
     view.innerHTML = "";
     try {
       await fn(params);
@@ -166,17 +167,61 @@
   window.addEventListener("hashchange", render);
   // Re-render when crossing the desktop/mobile breakpoint so the layout swaps.
   DESKTOP_QUERY.addEventListener("change", render);
+  // Tapping the scrim closes the drawer.
+  document.getElementById("drawer-scrim")?.addEventListener("click", closeDrawer);
+
+  // --- Multi-device sync: poll a shared-data fingerprint; refresh on change ---
+  // Screens that show shared data get auto-refreshed when another device makes
+  // a change. The active billing screens are left alone so scanning/typing is
+  // never interrupted; a new bill there already writes to the shared DB.
+  let _lastDataVersion = null;
+  let _lastSyncAt = null;
+  const REFRESH_SCREENS = new Set(["home", "products", "inventory", "history", "daily", "categories"]);
+  function updateSyncBadge() {
+    const badges = document.querySelectorAll(".sync-badge");
+    if (!badges.length) return;
+    const txt = _lastSyncAt ? "Synced " + _lastSyncAt.toLocaleTimeString() : "Not synced yet";
+    badges.forEach((b) => (b.textContent = txt));
+  }
+  async function pollDataVersion() {
+    if (document.hidden) return;
+    try {
+      const r = await api.get("/api/system/data-version");
+      _lastSyncAt = new Date();
+      updateSyncBadge();
+      if (_lastDataVersion === null) { _lastDataVersion = r.version; return; }
+      if (r.version !== _lastDataVersion) {
+        _lastDataVersion = r.version;
+        const cur = (location.hash.replace(/^#/, "") || "home").split("?")[0];
+        if (REFRESH_SCREENS.has(cur) && !document.querySelector(".modal-back")) {
+          render(); // re-pull this screen's data from the shared DB
+        }
+      }
+    } catch (_) { /* offline / transient — try again next tick */ }
+  }
+  setInterval(pollDataVersion, 5000);
+  pollDataVersion();
 
   // ---- Shared chrome --------------------------------------------------------
   function topbar(title, { back = true } = {}) {
     const bar = el(`<div class="topbar">
+      <button class="hamburger" aria-label="Menu">\u2630</button>
       ${back ? '<button class="back" aria-label="Back">\u2039</button>' : ""}
       <h1></h1><div class="spacer"></div>
       <span class="logo-chip"><img src="/static/img/logo.png" alt="RESVI"/></span>
     </div>`);
     bar.querySelector("h1").textContent = title;
     if (back) bar.querySelector(".back").onclick = () => history.back();
+    bar.querySelector(".hamburger").onclick = () => openDrawer();
     return bar;
+  }
+
+  // Mobile navigation drawer: slides the sidebar in with a scrim.
+  function openDrawer() {
+    document.getElementById("app")?.classList.add("drawer-open");
+  }
+  function closeDrawer() {
+    document.getElementById("app")?.classList.remove("drawer-open");
   }
   function screen(cls = "") {
     return el(`<div class="screen ${cls}"></div>`);
@@ -410,16 +455,34 @@
     }
 
     // Look up by product name (voice / typed words). One match -> add; many -> suggest.
-    async function lookupByName(term) {
-      term = (term || "").trim();
+    // Clean a spoken/typed phrase: drop trailing . , ! ? : ; and collapse spaces.
+    function cleanTerm(t) {
+      return (t || "")
+        .replace(/[.,!?:;]+\s*$/g, "")   // trailing punctuation
+        .replace(/\s+/g, " ")            // collapse inner whitespace
+        .trim();
+    }
+
+    async function lookupByName(rawTerm) {
+      const term = cleanTerm(rawTerm);
       if (!term) return;
       setStatus("scanning", "Searching \u201C" + term + "\u201D\u2026");
       flashToast(toast, "Searching\u2026");
       let items = [];
       try { items = await api.get("/api/products?active=1&q=" + encodeURIComponent(term)); } catch (_) {}
+      // Fuzzy fallback: if the server search misses (e.g. "uno redbox"), match
+      // client-side on collapsed/space-insensitive names.
+      if (!items.length) {
+        try {
+          const all = await api.get("/api/products?active=1");
+          const norm = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+          const t = norm(term);
+          items = all.filter((p) => norm(p.product_name).includes(t) || t.includes(norm(p.product_name)));
+        } catch (_) {}
+      }
       if (!items.length) {
         Sound.error(); flashScan("red");
-        setStatus("error", "Couldn't recognize product name.");
+        setStatus("error", `No product matched \u201C${term}\u201D.`);
         return;
       }
       if (items.length === 1) {
@@ -461,6 +524,17 @@
     bcInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submitManual(); } });
     bcInput.focus();
 
+    // Live product suggestions under the scan search box; pick -> add to bill.
+    attachAutocomplete(bcInput, (p) => {
+      bcInput.value = "";
+      cart.add({ product_id: p.id, product_name: p.product_name, selling_price: p.selling_price, discount: p.discount || 0, primary_image_id: p.primary_image_id });
+      showFound(p);
+      Sound.success(); flashScan("green"); vibrate(20);
+      setStatus("ok", "Added: " + p.product_name);
+      flashToast(toast, "Product added");
+      refreshBill();
+    });
+
     // Voice product search (Web Speech API).
     const micBtn = scr.querySelector(".bc-mic");
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -476,11 +550,11 @@
         listening = true; micBtn.classList.add("listening");
         setStatus("scanning", "Listening\u2026"); flashToast(toast, "Listening\u2026");
         rec.onresult = (ev) => {
-          const said = ev.results[0][0].transcript.trim();
+          const said = cleanTerm(ev.results[0][0].transcript);
           bcInput.value = said;
           lookupByName(said);
         };
-        rec.onerror = () => { Sound.error(); setStatus("error", "Couldn't recognize product name."); };
+        rec.onerror = () => { Sound.error(); setStatus("error", "Couldn't hear that \u2014 try again."); };
         rec.onend = () => { listening = false; micBtn.classList.remove("listening"); };
         try { rec.start(); } catch (_) { listening = false; micBtn.classList.remove("listening"); }
       };
@@ -809,6 +883,64 @@
     setTimeout(() => t.classList.remove("show"), 1400);
   }
 
+  /**
+   * Attach a live product-suggestions dropdown to a text input.
+   * onPick(product) fires when a suggestion is chosen (click / Enter).
+   * Real-time, case-insensitive, keyboard-navigable, mobile/tablet friendly.
+   */
+  function attachAutocomplete(input, onPick, { activeOnly = true } = {}) {
+    const box = el(`<div class="ac-box" hidden></div>`);
+    // Position relative to the input's wrapper.
+    const holder = input.parentElement;
+    if (getComputedStyle(holder).position === "static") holder.style.position = "relative";
+    holder.appendChild(box);
+
+    let items = [], hi = -1, timer = null, lastQ = "";
+
+    const close = () => { box.hidden = true; box.innerHTML = ""; hi = -1; };
+    const render = () => {
+      box.innerHTML = "";
+      if (!items.length) { close(); return; }
+      items.forEach((p, i) => {
+        const row = el(`<button type="button" class="ac-row ${i === hi ? "hi" : ""}">
+          ${p.primary_image_id ? `<img src="${api.imageUrl(p.primary_image_id)}" alt=""/>` : `<span class="ac-ph">\uD83D\uDCE6</span>`}
+          <span class="ac-name">${p.product_name}</span>
+          <span class="ac-price">${money(p.selling_price)}</span></button>`);
+        row.onmousedown = (e) => { e.preventDefault(); choose(i); };
+        box.appendChild(row);
+      });
+      box.hidden = false;
+    };
+    const choose = (i) => {
+      const p = items[i]; if (!p) return;
+      close();
+      onPick(p);
+    };
+    const fetchSuggest = async (q) => {
+      try {
+        const res = await api.get(`/api/products?${activeOnly ? "active=1&" : ""}q=${encodeURIComponent(q)}`);
+        items = res.slice(0, 8); hi = -1; render();
+      } catch (_) { close(); }
+    };
+
+    input.addEventListener("input", () => {
+      const q = input.value.trim();
+      lastQ = q;
+      clearTimeout(timer);
+      if (!q) { close(); return; }
+      timer = setTimeout(() => { if (input.value.trim() === lastQ) fetchSuggest(lastQ); }, 150);
+    });
+    input.addEventListener("keydown", (e) => {
+      if (box.hidden) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); hi = Math.min(hi + 1, items.length - 1); render(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); hi = Math.max(hi - 1, 0); render(); }
+      else if (e.key === "Enter" && hi >= 0) { e.preventDefault(); choose(hi); }
+      else if (e.key === "Escape") { close(); }
+    });
+    input.addEventListener("blur", () => setTimeout(close, 120));
+    return { close };
+  }
+
   function handleScan(res, guide, toast, refreshBill) {
     const top = res.top;
     const score = top ? top.score : 0;
@@ -1025,6 +1157,8 @@
       clearTimeout(t);
       t = setTimeout(load, 200);
     };
+    // Suggestions dropdown; picking one opens that product.
+    attachAutocomplete(search, (p) => { search.value = p.product_name; go("product", { id: p.id }); }, { activeOnly: false });
     catSel.onchange = load;
     await load();
   });
@@ -1532,7 +1666,8 @@
     s.appendChild(
       el(`<div class="card">
         <div class="setting-row"><span class="k">Version</span><span class="v">${info.version}</span></div>
-        <div class="setting-row"><span class="k">Database</span><span class="v">${info.database}</span></div>
+        <div class="setting-row"><span class="k">Database</span><span class="v">${info.db_backend || info.database}</span></div>
+        <div class="setting-row"><span class="k">Multi-device sync</span><span class="v sync-badge">checking\u2026</span></div>
         <div class="setting-row" style="border:none"><span class="k">Min images / product</span><span class="v">${info.min_product_images}</span></div>
       </div>`)
     );

@@ -33,6 +33,7 @@ def info():
 
     recognizer = current_app.config["RECOGNIZER"]
     store = current_app.config["VECTOR_STORE"]
+    from database.db import _is_sqlite
     with session_scope() as s:
         product_count = s.scalar(select(func.count(Product.id))) or 0
         from backend.services import inventory_service
@@ -42,6 +43,7 @@ def info():
             "app": settings.APP_NAME,
             "version": settings.APP_VERSION,
             "database": "sqlite" if _sqlite_path() else "external",
+            "db_backend": "SQLite (temporary)" if _is_sqlite else "PostgreSQL (persistent)",
             "min_product_images": settings.MIN_PRODUCT_IMAGES,
             "max_product_images": settings.MAX_PRODUCT_IMAGES,
             "recognizer": recognizer.provider.model_id,

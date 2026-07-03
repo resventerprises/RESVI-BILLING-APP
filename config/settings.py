@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "0.8.3-responsive"  # tablet layout, touch targets, sidebar spacing, mobile import
+APP_VERSION: str = "0.9.2-persist-logs"  # startup DB logs, sync badge, persistence guidance
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 
