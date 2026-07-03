@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "0.8.0-voice"  # bright bill panel, voice search, card details
+APP_VERSION: str = "0.8.2-deps"  # add openpyxl/reportlab/gunicorn to requirements
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

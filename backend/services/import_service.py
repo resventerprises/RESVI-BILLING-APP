@@ -65,7 +65,7 @@ def _norm(v) -> str:
 
 def _product_dir(product_id: int) -> Path:
     d = Path(settings.UPLOAD_DIR) / str(product_id)
-    d.mkdir(parents=True, exist_ok=True)
+    d.mkdir(parents=True, exist_ok=True)  # may raise on read-only FS; caller catches
     return d
 
 
@@ -106,21 +106,38 @@ def _category_id(session: Session, cache: dict[str, int], name: str) -> int | No
 
 
 def _read_rows(file_bytes: bytes, filename: str) -> list[list]:
-    """Return all rows (including header) from an .xlsx or .csv file."""
+    """Return all rows (including header) from an .xlsx or .csv file.
+
+    Raises ValueError with a user-friendly message for unreadable files so the
+    route can return clean JSON instead of a 500/HTML error page.
+    """
     name = (filename or "").lower()
     if name.endswith(".csv"):
         import csv as _csv
 
         text = file_bytes.decode("utf-8-sig", errors="replace")
         return [list(r) for r in _csv.reader(io.StringIO(text))]
-    wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    if name.endswith(".xls"):
+        raise ValueError("This looks like an old .xls file. Please re-save it as .xlsx (Excel Workbook) and upload again.")
+    if not name.endswith(".xlsx"):
+        raise ValueError("Unsupported file type. Please upload a .xlsx or .csv file.")
+    try:
+        wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    except Exception:
+        raise ValueError("Couldn't read this Excel file. Make sure it's a valid .xlsx (Excel Workbook), not a renamed or corrupted file.")
     ws = wb.active
+    if ws is None:
+        raise ValueError("The workbook has no active sheet.")
     return [list(r) for r in ws.iter_rows(values_only=True)]
 
 
 def import_products(session: Session, recognizer, file_bytes: bytes,
                     zip_bytes: bytes | None = None, filename: str = "products.xlsx") -> dict:
-    rows = _read_rows(file_bytes, filename)
+    try:
+        rows = _read_rows(file_bytes, filename)
+    except ValueError as exc:
+        return {"created": 0, "updated": 0, "skipped": 0, "failed": 0,
+                "errors": [str(exc)], "rows": []}
     if not rows:
         return {"created": 0, "updated": 0, "skipped": 0, "failed": 0,
                 "errors": ["The file is empty."], "rows": []}
@@ -230,19 +247,22 @@ def import_products(session: Session, recognizer, file_bytes: bytes,
             # ---- Image mapping: from zip first, else uploads/products/ ------
             image_name = cell(raw, "image_name")
             if image_name:
-                raw_img = images.get(image_name.lower())
-                if raw_img is not None:
-                    ext = Path(image_name).suffix.lower() or ".jpg"
-                    dest = _product_dir(product.id) / f"{product.id}_{len(repo.product_images.for_product(session, product.id))}{ext}"
-                    dest.write_bytes(raw_img)
-                    repo.product_images.create(session, product_id=product.id, image_path=str(dest), image_type="import")
-                    entry["image"] = "attached"
-                elif image_name.lower() in disk_images:
-                    src = disk_images[image_name.lower()]
-                    repo.product_images.create(session, product_id=product.id, image_path=str(src), image_type="import")
-                    entry["image"] = "linked"
-                else:
-                    entry["image"] = "not found"
+                try:
+                    raw_img = images.get(image_name.lower())
+                    if raw_img is not None:
+                        ext = Path(image_name).suffix.lower() or ".jpg"
+                        dest = _product_dir(product.id) / f"{product.id}_{len(repo.product_images.for_product(session, product.id))}{ext}"
+                        dest.write_bytes(raw_img)
+                        repo.product_images.create(session, product_id=product.id, image_path=str(dest), image_type="import")
+                        entry["image"] = "attached"
+                    elif image_name.lower() in disk_images:
+                        src = disk_images[image_name.lower()]
+                        repo.product_images.create(session, product_id=product.id, image_path=str(src), image_type="import")
+                        entry["image"] = "linked"
+                    else:
+                        entry["image"] = "not found"
+                except Exception as img_exc:  # never fail a product over its image
+                    entry["image"] = f"image skipped ({type(img_exc).__name__})"
 
             report.append(entry)
         except Exception as exc:  # noqa: BLE001 - per-row; keep going

@@ -11,10 +11,18 @@
 
   async function unwrap(res) {
     let body;
+    let raw = "";
     try {
-      body = await res.json();
+      raw = await res.text();
+      body = JSON.parse(raw);
     } catch (e) {
-      throw new ApiError("bad_response", "Server returned an unreadable response.");
+      // Non-JSON response (usually a platform/proxy error page). Surface the
+      // real status and a snippet so the user/logs show the actual cause.
+      const snippet = (raw || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+      throw new ApiError(
+        "bad_response",
+        `Server error ${res.status} ${res.statusText}${snippet ? ": " + snippet : " (no readable response)"}`
+      );
     }
     if (!body.ok) {
       const err = body.error || {};
