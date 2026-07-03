@@ -208,7 +208,9 @@ img { display: block; }
 .billpanel-head { display: none; }
 .bill-list { display: none; }
 .bill-empty { color: var(--muted); text-align: center; padding: 28px 12px; }
-.bill-line { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.bill-line { display: grid; grid-template-columns: 50px 1fr auto auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.bl-thumb { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 22px; flex: none; }
+.bl-thumb.ph { color: var(--muted); }
 .bl-name { font-weight: 600; font-size: 15px; }
 .bl-unit { color: var(--muted); font-size: 12px; font-weight: 400; }
 .bl-qty { display: inline-flex; align-items: center; gap: 8px; }
@@ -404,3 +406,91 @@ img { display: block; }
 @media (min-width: 820px) {
   .preview-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
 }
+
+/* ---------- Barcode scanner ---------- */
+.bc-wrap { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 12px; padding: 16px; background: #0b0f0f; }
+.bc-reader { width: 100%; max-width: 480px; margin: 0 auto; border-radius: 14px; overflow: hidden; background: #000; min-height: 220px; }
+.bc-reader video { width: 100% !important; border-radius: 14px; }
+.bc-controls { display: flex; gap: 10px; justify-content: center; }
+.bc-controls .btn { width: auto; }
+.bc-manual { display: flex; gap: 8px; max-width: 480px; margin: 0 auto; width: 100%; }
+.bc-manual .bc-input { flex: 1; }
+.bc-found { display: flex; gap: 12px; align-items: center; margin: 12px 16px; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.bc-found img { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; background: var(--surface-2); }
+.bf-name { font-weight: 700; font-size: 15px; }
+.bf-meta { color: var(--muted); font-size: 13px; margin: 2px 0 6px; }
+@media (min-width: 820px) {
+  .bc-wrap { justify-content: flex-start; }
+  .bc-reader { max-width: 520px; }
+}
+
+/* ---------- Bulk import ---------- */
+.import-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+.import-step { margin-bottom: 10px; }
+.import-cols { font-size: 12.5px; margin-top: 8px; }
+.import-result { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+.ir-row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; align-items: center; }
+.msg.ok { color: #15803d; }
+
+/* Barcode found-card placeholder */
+.bf-ph { width: 64px; height: 64px; border-radius: 10px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--muted); flex: none; }
+
+/* ================= Billing panel: always bright, never dimmed ================= */
+/* Force full visibility regardless of scanner state (fixes the faded/disabled look). */
+.billpanel,
+.current-bill, .bill-panel, .bill-sidebar, .bill-items, .bill-summary,
+.billpanel-head, .bill-list, .billbar, .bc-found {
+  opacity: 1 !important;
+  filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  pointer-events: auto !important;
+}
+.billpanel, .billpanel-head, .bill-list, .billbar {
+  background: #ffffff !important;
+}
+/* The panel sits above the camera/flash overlay and casts a subtle POS-style shadow. */
+.billpanel {
+  position: relative;
+  z-index: 6;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+/* High-contrast bill lines: white cards, dark text, bold price. */
+.bill-line { color: #111827 !important; }
+.bl-name { color: #111827; font-weight: 700; }
+.bl-unit { color: #4b5563; }
+.bl-amt { color: #111827; font-weight: 800; }
+.billbar .summary .total { color: #111827; }
+/* The product-found confirmation card: solid white, readable. */
+.bc-found { background: #ffffff !important; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+.bf-name { color: #111827; }
+
+/* Product card: placeholder, category, stock */
+.pc-ph { width: 56px; height: 56px; border-radius: 10px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 26px; color: var(--muted); flex: none; }
+.stock { font-size: 12.5px; font-weight: 600; }
+.stock.ok { color: #15803d; } .stock.low { color: #b45309; } .stock.out { color: #b91c1c; }
+
+/* Voice search mic */
+.bc-mic.listening { background: #fee2e2; color: #b91c1c; animation: micPulse 1s ease-in-out infinite; }
+@keyframes micPulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
+
+/* Voice multi-match suggestions in the found-card */
+.bf-suggest { width: 100%; }
+.bf-suggest-h { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+.bf-sug-row { display: grid; grid-template-columns: 40px 1fr auto; gap: 10px; align-items: center; width: 100%; text-align: left; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: #fff; cursor: pointer; margin-bottom: 6px; }
+.bf-sug-row img { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; }
+.bf-sug-row:hover { border-color: var(--primary); }
+
+/* Import: dropzone + summary */
+.dropzone { border: 2px dashed var(--border); border-radius: 14px; padding: 22px; text-align: center; cursor: pointer; margin-bottom: 14px; transition: border-color .15s, background .15s; }
+.dropzone.over { border-color: var(--primary); background: var(--surface); }
+.dz-browse { color: var(--primary); font-weight: 700; text-decoration: underline; cursor: pointer; }
+.dz-file { margin-top: 8px; font-size: 13px; }
+.import-summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; align-items: center; }
+.sum-chip { padding: 10px 14px; border-radius: 12px; font-size: 14px; background: var(--surface-2); }
+.sum-chip b { font-size: 18px; margin-right: 4px; }
+.sum-chip.ok { background: #dcfce7; color: #15803d; }
+.sum-chip.upd { background: #fef9c3; color: #854d0e; }
+.sum-chip.skip { background: var(--surface-2); color: var(--muted); }
+.sum-chip.fail { background: #fee2e2; color: #b91c1c; }
+.global-toast { position: fixed; left: 50%; bottom: 32px; top: auto; z-index: 50; }

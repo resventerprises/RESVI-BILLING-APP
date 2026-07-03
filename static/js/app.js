@@ -56,8 +56,17 @@
   })();
 
   // ---- Cart (client-side) ---------------------------------------------------
+  // 50x50 product thumbnail for bill lines; placeholder icon if no image.
+  function lineThumb(imageId) {
+    if (imageId) {
+      return `<img class="bl-thumb" src="${api.imageUrl(imageId)}" alt="" `
+        + `onerror="this.outerHTML='<div class=&quot;bl-thumb ph&quot;>\uD83D\uDCE6</div>'"/>`;
+    }
+    return `<div class="bl-thumb ph">\uD83D\uDCE6</div>`;
+  }
+
   const cart = {
-    lines: [], // {product_id, name, price, discount, qty}
+    lines: [], // {product_id, name, price, discount, qty, imageId}
     add(p) {
       const existing = this.lines.find((l) => l.product_id === p.product_id);
       if (existing) existing.qty += 1;
@@ -67,6 +76,7 @@
           name: p.product_name,
           price: p.selling_price,
           discount: p.discount || 0,
+          imageId: p.primary_image_id || null,
           qty: 1,
         });
       this.lastProductId = p.product_id;
@@ -115,12 +125,13 @@
     sb.appendChild(logo);
     const nav = el(`<nav class="side-nav"></nav>`);
     [
-      ["scan", "New bill", "\uD83D\uDCF7"],
+      ["scan", "New bill", "\uD83D\uDCF3"],
       ["products", "Products", "\uD83D\uDCE6"],
       ["categories", "Categories", "\uD83D\uDDC2\uFE0F"],
       ["inventory", "Inventory", "\uD83D\uDCCA"],
       ["history", "Bill history", "\uD83E\uDDFE"],
       ["daily", "Daily sales", "\uD83D\uDCC8"],
+      ["ai-scan", "AI Scanner (Beta)", "\uD83E\uDDEA"],
       ["settings", "Settings", "\u2699\uFE0F"],
     ].forEach(([r, label, ico]) => {
       const b = el(`<button class="side-item ${act === r ? "active" : ""}">
@@ -142,6 +153,8 @@
     const params = Object.fromEntries(new URLSearchParams(qs || ""));
     const fn = routes[name] || routes.home;
     if (name !== "scan") stopCamera(); // leaving scan tears the camera down
+    if (name !== "scan") stopBarcodeScanner();
+    if (name !== "ai-scan") stopCamera();
     renderSidebar(name);
     view.innerHTML = "";
     try {
@@ -194,7 +207,7 @@
       t.onclick = () => go(target);
       return t;
     };
-    actions.appendChild(make("Scan product", "\uD83D\uDCF7", "scan", true));
+    actions.appendChild(make("Scan barcode", "\uD83D\uDCF3", "scan", true));
     actions.appendChild(make("Products", "\uD83D\uDCE6", "products"));
     actions.appendChild(make("Inventory", "\uD83D\uDCCA", "inventory"));
     actions.appendChild(make("Categories", "\uD83D\uDDC2\uFE0F", "categories"));
@@ -265,6 +278,13 @@
 
   // ---- Scan -----------------------------------------------------------------
   let camera = { stream: null, timer: null, busy: false, lock: { id: null, missed: 0 }, torch: false };
+  let bcScanner = null; // html5-qrcode instance for the barcode scanner
+
+  async function stopBarcodeScanner() {
+    if (!bcScanner) return;
+    try { await bcScanner.stop(); await bcScanner.clear(); } catch (_) {}
+    bcScanner = null;
+  }
 
   // Scan feedback state.
   const PRESENCE = 0.45;     // below this top-score, assume nothing is presented
@@ -288,8 +308,211 @@
     scanFlashEl = null;
   }
 
+  // ---- Barcode scanner (PRIMARY billing flow) -------------------------------
   route("scan", async () => {
-    const bar = topbar("Scan", { back: true });
+    view.appendChild(topbar("Barcode Scanner", { back: true }));
+    const scr = el(`<div class="scan-screen">
+      <div class="scan-wrap bc-wrap">
+        <div id="bc-reader" class="bc-reader"></div>
+        <div class="scan-flash"></div>
+        <div class="scan-status"><span class="ss-dot idle"></span><span class="ss-text">Scanner stopped</span></div>
+        <div class="toast">Added</div>
+        <div class="bc-controls">
+          <button class="btn primary start">\u25B6 Start scanner</button>
+          <button class="btn ghost stop" disabled>\u25A0 Stop</button>
+        </div>
+        <div class="bc-manual">
+          <input class="input bc-input" inputmode="numeric" placeholder="Scan USB / type barcode / say a name"/>
+          <button class="btn ghost sm bc-mic" title="Voice search" style="width:auto">\uD83C\uDF99\uFE0F</button>
+          <button class="btn primary sm bc-go" style="width:auto">Find</button>
+        </div>
+      </div>
+      <div class="billpanel">
+        <div class="billpanel-head"><span>Current bill</span></div>
+        <div class="scan-cta" hidden></div>
+        <div class="bc-found" hidden></div>
+        <div class="bill-list"></div>
+        <div class="billbar">
+          <div class="summary"><span class="count"></span><span class="total"></span></div>
+          <div class="actions">
+            <button class="btn ghost undo">Undo last</button>
+            <button class="btn primary complete">Complete bill</button>
+          </div>
+        </div>
+      </div>
+    </div>`);
+    view.appendChild(scr);
+
+    const listEl = scr.querySelector(".bill-list");
+    const ssDot = scr.querySelector(".ss-dot");
+    const ssText = scr.querySelector(".ss-text");
+    const toast = scr.querySelector(".toast");
+    const foundEl = scr.querySelector(".bc-found");
+    scanFlashEl = scr.querySelector(".scan-flash");
+    Sound.ensure();
+
+    const setStatus = (state, text) => { ssDot.className = "ss-dot " + state; if (text != null) ssText.textContent = text; };
+
+    const refreshBill = () => {
+      scr.querySelector(".count").textContent = cart.count() + " item" + (cart.count() === 1 ? "" : "s");
+      scr.querySelector(".total").textContent = money(cart.total());
+      listEl.innerHTML = "";
+      if (!cart.lines.length) { listEl.appendChild(el(`<div class="bill-empty">No items yet.<br/>Scan a barcode to begin.</div>`)); return; }
+      cart.lines.forEach((l) => {
+        const row = el(`<div class="bill-line">
+          ${lineThumb(l.imageId)}
+          <div class="bl-name">${l.name}<div class="bl-unit">${money(l.price - l.discount)} each</div></div>
+          <div class="bl-qty"><button class="minus">\u2212</button><span>${l.qty}</span><button class="plus">+</button></div>
+          <div class="bl-amt">${money((l.price - l.discount) * l.qty)}</div></div>`);
+        row.querySelector(".minus").onclick = () => { cart.setQty(l.product_id, l.qty - 1); refreshBill(); };
+        row.querySelector(".plus").onclick = () => { cart.setQty(l.product_id, l.qty + 1); refreshBill(); };
+        listEl.appendChild(row);
+      });
+    };
+    refreshBill();
+    scr.querySelector(".undo").onclick = () => { cart.undoLast(); vibrate(10); refreshBill(); };
+    scr.querySelector(".complete").onclick = () => completeBill(refreshBill);
+
+    // Show the found product (image + name + price + stock) for confirmation.
+    function showFound(p) {
+      foundEl.hidden = false;
+      const badge = p.stock_status === "out" ? `<span class="pill out">Out of stock</span>`
+        : p.stock_status === "low" ? `<span class="pill low">Low stock</span>`
+        : `<span class="pill active">In stock: ${p.quantity}</span>`;
+      foundEl.innerHTML = `
+        ${p.primary_image_id
+          ? `<img src="${api.imageUrl(p.primary_image_id)}" alt="" onerror="this.outerHTML='<div class=&quot;bf-ph&quot;>\uD83D\uDCE6</div>'"/>`
+          : `<div class="bf-ph">\uD83D\uDCE6</div>`}
+        <div class="bf-info"><div class="bf-name">${p.product_name}</div>
+          <div class="bf-meta">${p.barcode} \u00B7 <b>${money(p.selling_price)}</b></div>${badge}</div>`;
+    }
+
+    let lastLookup = 0;
+    async function lookup(code, { fromCamera = false } = {}) {
+      code = (code || "").trim();
+      if (!code) return;
+      if (fromCamera && Date.now() - lastLookup < 1200) return; // debounce camera repeats
+      lastLookup = Date.now();
+      setStatus("scanning", "Looking up " + code + "\u2026");
+      try {
+        const p = await api.get("/api/products/by-barcode/" + encodeURIComponent(code));
+        cart.add({ product_id: p.id, product_name: p.product_name, selling_price: p.selling_price, discount: p.discount || 0 });
+        showFound(p);
+        Sound.success(); flashScan("green"); vibrate(30);
+        setStatus("ok", "Added: " + p.product_name);
+        flashToast(toast, "Added \u00B7 " + p.product_name);
+        refreshBill();
+      } catch (e) {
+        foundEl.hidden = true;
+        Sound.error(); flashScan("red");
+        setStatus("error", "Product Not Found: " + code);
+      }
+    }
+
+    // Look up by product name (voice / typed words). One match -> add; many -> suggest.
+    async function lookupByName(term) {
+      term = (term || "").trim();
+      if (!term) return;
+      setStatus("scanning", "Searching \u201C" + term + "\u201D\u2026");
+      flashToast(toast, "Searching\u2026");
+      let items = [];
+      try { items = await api.get("/api/products?active=1&q=" + encodeURIComponent(term)); } catch (_) {}
+      if (!items.length) {
+        Sound.error(); flashScan("red");
+        setStatus("error", "Couldn't recognize product name.");
+        return;
+      }
+      if (items.length === 1) {
+        const p = items[0];
+        cart.add({ product_id: p.id, product_name: p.product_name, selling_price: p.selling_price, discount: p.discount || 0, primary_image_id: p.primary_image_id });
+        showFound(p);
+        Sound.success(); flashScan("green"); vibrate(30);
+        setStatus("ok", "Added: " + p.product_name);
+        flashToast(toast, "Product added");
+        refreshBill();
+        return;
+      }
+      // Multiple matches -> show tappable suggestions.
+      foundEl.hidden = false;
+      setStatus("low", items.length + " matches \u2014 tap one");
+      foundEl.innerHTML = `<div class="bf-suggest"><div class="bf-suggest-h">Did you mean\u2026</div></div>`;
+      const wrap = foundEl.querySelector(".bf-suggest");
+      items.slice(0, 6).forEach((p) => {
+        const b = el(`<button class="bf-sug-row">
+          ${p.primary_image_id ? `<img src="${api.imageUrl(p.primary_image_id)}" alt=""/>` : `<div class="bl-thumb ph">\uD83D\uDCE6</div>`}
+          <span class="pr-name">${p.product_name}</span><span class="pr-price">${money(p.selling_price)}</span></button>`);
+        b.onclick = () => {
+          cart.add({ product_id: p.id, product_name: p.product_name, selling_price: p.selling_price, discount: p.discount || 0, primary_image_id: p.primary_image_id });
+          Sound.success(); flashScan("green"); setStatus("ok", "Added: " + p.product_name);
+          flashToast(toast, "Product added"); showFound(p); refreshBill();
+        };
+        wrap.appendChild(b);
+      });
+    }
+
+    // Manual / USB scanner input: digits -> barcode lookup; words -> name search.
+    const bcInput = scr.querySelector(".bc-input");
+    const submitManual = () => {
+      const v = bcInput.value.trim(); bcInput.value = "";
+      if (!v) return;
+      if (/^\d+$/.test(v)) lookup(v); else lookupByName(v);
+    };
+    scr.querySelector(".bc-go").onclick = submitManual;
+    bcInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submitManual(); } });
+    bcInput.focus();
+
+    // Voice product search (Web Speech API).
+    const micBtn = scr.querySelector(".bc-mic");
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      micBtn.disabled = true;
+      micBtn.title = "Voice search not supported in this browser";
+    } else {
+      let listening = false;
+      micBtn.onclick = () => {
+        if (listening) return;
+        const rec = new SR();
+        rec.lang = "en-IN"; rec.interimResults = false; rec.maxAlternatives = 3;
+        listening = true; micBtn.classList.add("listening");
+        setStatus("scanning", "Listening\u2026"); flashToast(toast, "Listening\u2026");
+        rec.onresult = (ev) => {
+          const said = ev.results[0][0].transcript.trim();
+          bcInput.value = said;
+          lookupByName(said);
+        };
+        rec.onerror = () => { Sound.error(); setStatus("error", "Couldn't recognize product name."); };
+        rec.onend = () => { listening = false; micBtn.classList.remove("listening"); };
+        try { rec.start(); } catch (_) { listening = false; micBtn.classList.remove("listening"); }
+      };
+    }
+
+    // Camera scanner via html5-qrcode (optional; manual/USB always works).
+    const startBtn = scr.querySelector(".start");
+    const stopBtn = scr.querySelector(".stop");
+    if (typeof Html5Qrcode === "undefined") {
+      setStatus("idle", "Camera library unavailable \u2014 use USB scanner or type barcode");
+      startBtn.disabled = true;
+    } else {
+      startBtn.onclick = async () => {
+        try {
+          bcScanner = new Html5Qrcode("bc-reader", { verbose: false });
+          await bcScanner.start({ facingMode: "environment" },
+            { fps: 10, qrbox: { width: 260, height: 160 } },
+            (decoded) => lookup(decoded, { fromCamera: true }),
+            () => {});
+          startBtn.disabled = true; stopBtn.disabled = false;
+          setStatus("scanning", "Point at a barcode\u2026");
+        } catch (e) {
+          setStatus("error", "Camera error: " + (e.message || e));
+        }
+      };
+      stopBtn.onclick = async () => { await stopBarcodeScanner(); startBtn.disabled = false; stopBtn.disabled = true; setStatus("idle", "Scanner stopped"); };
+    }
+  });
+
+  // ---- Experimental: AI image scanner (kept, no longer the primary flow) ----
+  route("ai-scan", async () => {
+    const bar = topbar("AI Scanner (Experimental)", { back: true });
     const flash = el(`<button class="round" title="Flash">\u26A1</button>`);
     bar.appendChild(flash);
     view.appendChild(bar);
@@ -374,6 +597,7 @@
       }
       cart.lines.forEach((l) => {
         const row = el(`<div class="bill-line">
+          ${lineThumb(l.imageId)}
           <div class="bl-name">${l.name}<div class="bl-unit">${money(l.price - l.discount)} each</div></div>
           <div class="bl-qty"><button class="minus">\u2212</button><span>${l.qty}</span><button class="plus">+</button></div>
           <div class="bl-amt">${money((l.price - l.discount) * l.qty)}</div></div>`);
@@ -577,6 +801,14 @@
     setTimeout(() => toast.classList.remove("show"), 900);
   }
 
+  // A floating toast not tied to a specific screen element.
+  function globalToast(text) {
+    let t = document.querySelector(".global-toast");
+    if (!t) { t = el(`<div class="toast global-toast"></div>`); document.body.appendChild(t); }
+    t.textContent = text; t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 1400);
+  }
+
   function handleScan(res, guide, toast, refreshBill) {
     const top = res.top;
     const score = top ? top.score : 0;
@@ -758,7 +990,8 @@
       <input class="input" placeholder="Search by name or code"/>
       <div class="btn-row" style="margin-top:10px">
         <select class="input"><option value="">All categories</option></select>
-        <button class="btn primary sm" style="width:auto;white-space:nowrap">+ Add</button>
+        <button class="btn ghost sm import-btn" style="width:auto;white-space:nowrap">\u2B07 Import</button>
+        <button class="btn primary sm add-btn" style="width:auto;white-space:nowrap">+ Add</button>
       </div></div>`);
     const listWrap = el(`<div class="list product-grid"></div>`);
     s.appendChild(head);
@@ -767,7 +1000,8 @@
 
     const search = head.querySelector('input');
     const catSel = head.querySelector("select");
-    head.querySelector("button").onclick = () => go("product");
+    head.querySelector(".add-btn").onclick = () => go("product");
+    head.querySelector(".import-btn").onclick = () => go("import");
 
     const cats = await api.get("/api/categories");
     cats.forEach((c) => catSel.appendChild(el(`<option value="${c.id}">${c.category_name}</option>`)));
@@ -796,10 +1030,15 @@
   });
 
   function productCard(p, reload) {
+    const stockCls = p.stock_status === "out" ? "out" : p.stock_status === "low" ? "low" : "ok";
+    const stockTxt = p.stock_status === "out" ? "Out of stock" : `In stock: ${p.quantity}`;
     const card = el(`<div class="card product-card">
-      <img src="${p.primary_image_id ? api.imageUrl(p.primary_image_id) : ""}" alt=""/>
+      ${p.primary_image_id
+        ? `<img src="${api.imageUrl(p.primary_image_id)}" alt="" onerror="this.outerHTML='<div class=&quot;pc-ph&quot;>\uD83D\uDCE6</div>'"/>`
+        : `<div class="pc-ph">\uD83D\uDCE6</div>`}
       <div><div class="name">${p.product_name}</div>
-        <div class="meta">${p.product_code} \u00B7 ${p.category_name || ""}</div>
+        <div class="meta">${p.barcode ? "\uD83C\uDFF7\uFE0F " + p.barcode : p.product_code} \u00B7 Category: ${p.category_name || "\u2014"}</div>
+        <div class="meta"><span class="stock ${stockCls}">${stockTxt}</span></div>
         <div class="meta"><span class="price">${money(p.selling_price)}</span>
           ${p.discount ? " \u00B7 \u2212" + money(p.discount) : ""}
           <span class="pill ${p.status === "active" ? "active" : "inactive"}">${p.status}</span></div>
@@ -817,6 +1056,98 @@
     };
     return card;
   }
+
+  // ---- Bulk import (Excel + images ZIP) ------------------------------------
+  route("import", async () => {
+    view.appendChild(topbar("Import products"));
+    const s = screen();
+    const box = el(`<div class="form-narrow">
+      <div class="import-card">
+        <div class="import-step"><b>1.</b> Download the template, fill it in Excel, then upload.</div>
+        <button class="btn ghost dl-tpl" style="width:auto">\u2B07 Download template (.xlsx)</button>
+        <div class="import-cols muted">Columns: product_name, category, price, quantity, barcode, min_stock, image_name</div>
+      </div>
+      <div class="dropzone">
+        <div class="dz-inner">\uD83D\uDCC4 <b>Drag &amp; drop</b> your .xlsx or .csv here, or <span class="dz-browse">browse</span>
+          <div class="dz-file muted"></div></div>
+        <input class="dz-input" type="file" accept=".xlsx,.csv" hidden/>
+      </div>
+      <div class="field"><label>Product images (.zip) \u2014 optional</label>
+        <input class="input zip" type="file" accept=".zip"/>
+        <div class="upload-hint">Image names must match the <b>image_name</b> column (or already be in uploads/products/).</div></div>
+      <button class="btn primary run-import">Import products</button>
+      <div class="msg import-msg"></div>
+      <div class="import-summary" hidden></div>
+      <div class="import-result"></div>
+    </div>`);
+    s.appendChild(box);
+    view.appendChild(s);
+
+    box.querySelector(".dl-tpl").onclick = () => window.open("/api/products/import/template", "_blank");
+    const msg = box.querySelector(".import-msg");
+    const summary = box.querySelector(".import-summary");
+    const result = box.querySelector(".import-result");
+    const dz = box.querySelector(".dropzone");
+    const dzInput = box.querySelector(".dz-input");
+    const dzFile = box.querySelector(".dz-file");
+    let chosenFile = null;
+
+    const setFile = (f) => { chosenFile = f; dzFile.textContent = f ? ("Selected: " + f.name) : ""; };
+    box.querySelector(".dz-browse").onclick = () => dzInput.click();
+    dz.onclick = (e) => { if (!e.target.closest(".dz-browse")) dzInput.click(); };
+    dzInput.onchange = () => setFile(dzInput.files[0]);
+    ["dragover", "dragenter"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("over"); }));
+    ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("over"); }));
+    dz.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) setFile(f); });
+
+    function downloadErrorReport(rows) {
+      const failed = rows.filter((r) => r.status === "failed");
+      if (!failed.length) return;
+      const csv = "row,barcode,product_name,error\n" +
+        failed.map((r) => `${r.row},"${r.barcode || ""}","${(r.product_name || "").replace(/"/g, '""')}","${(r.error || "").replace(/"/g, '""')}"`).join("\n");
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+      const a = document.createElement("a"); a.href = url; a.download = "import_errors.csv"; a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    box.querySelector(".run-import").onclick = async () => {
+      msg.textContent = ""; msg.className = "msg import-msg"; result.innerHTML = ""; summary.hidden = true;
+      if (!chosenFile) { msg.textContent = "Please choose a .xlsx or .csv file."; return; }
+      const zip = box.querySelector(".zip").files[0];
+      const btn = box.querySelector(".run-import");
+      btn.disabled = true; btn.textContent = "Importing\u2026";
+      try {
+        const fd = new FormData();
+        fd.append("file", chosenFile);
+        if (zip) fd.append("images", zip);
+        const r = await api.form("/api/products/import", fd);
+        summary.hidden = false;
+        summary.innerHTML = `
+          <div class="sum-chip ok"><b>${r.created}</b> Imported</div>
+          <div class="sum-chip upd"><b>${r.updated}</b> Updated</div>
+          <div class="sum-chip skip"><b>${r.skipped}</b> Skipped</div>
+          <div class="sum-chip fail"><b>${r.failed || 0}</b> Failed</div>`;
+        globalToast(`Import complete \u00B7 ${r.created + r.updated} products`);
+        if (r.failed) {
+          const dl = el(`<button class="btn ghost sm" style="width:auto;margin-top:10px">\u2B07 Download error report</button>`);
+          dl.onclick = () => downloadErrorReport(r.rows);
+          summary.appendChild(dl);
+        }
+        result.innerHTML = (r.rows || []).map((row) => {
+          const tag = row.status === "created" ? '<span class="pill active">created</span>'
+            : row.status === "updated" ? '<span class="pill low">updated</span>'
+            : row.status === "failed" ? '<span class="pill out">failed</span>'
+            : '<span class="pill inactive">skipped</span>';
+          const extra = row.error ? ` \u2014 ${row.error}` : (row.image ? ` \u00B7 image: ${row.image}` : "");
+          return `<div class="ir-row"><span>${row.barcode || "\u2014"} ${row.product_name || ""}</span><span>${tag}${extra}</span></div>`;
+        }).join("");
+      } catch (e) {
+        msg.textContent = e.message;
+      } finally {
+        btn.disabled = false; btn.textContent = "Import products";
+      }
+    };
+  });
 
   // ---- Product form (add / edit) -------------------------------------------
   route("product", async (params) => {
@@ -851,10 +1182,16 @@
       </div>
       <div class="field"><label>Description (optional)</label>
         <input class="input" name="description" value="${product && product.description ? product.description : ""}"/></div>
+      <div class="field"><label>Barcode</label>
+        <div class="btn-row" style="gap:8px">
+          <input class="input" name="barcode" value="${product && product.barcode ? product.barcode : ""}" placeholder="Auto-generated" style="flex:1"/>
+          <button type="button" class="btn ghost sm gen-bc" style="width:auto;white-space:nowrap">Generate</button>
+          ${editing && product && product.barcode ? '<button type="button" class="btn primary sm print-bc" style="width:auto;white-space:nowrap">Print label</button>' : ""}
+        </div></div>
       <div class="field"><label>Size family (optional — share across sizes of the same item)</label>
         <input class="input" name="family_key" value="${product && product.family_key ? product.family_key : ""}"/></div>
-      ${editing ? "" : `<div class="field upload-field"><label>Product images</label>
-        <div class="upload-hint">Choose at least <b class="min-n">3</b> photos (max <b class="max-n">10</b>) — plain background, a few angles.</div>
+      ${editing ? "" : `<div class="field upload-field"><label>Product image (optional)</label>
+        <div class="upload-hint">A photo helps confirm the item at billing. Optional — up to <b class="max-n">10</b>.</div>
         <input class="file-real" name="images" type="file" accept="image/*" multiple hidden/>
         <div class="upload-actions">
           <button type="button" class="btn ghost pick-files" style="width:auto">\uD83D\uDDBC\uFE0F Choose images</button>
@@ -876,15 +1213,26 @@
     });
     const msg = form.querySelector(".msg");
 
-    // ---- Image picker (gallery/files, previews, remove, count) -------------
-    let MIN_IMG = 3, MAX_IMG = 10;
+    // ---- Barcode: prefill next, generate, print label ----------------------
+    const bcField = form.querySelector('[name="barcode"]');
+    if (!editing && bcField && !bcField.value) {
+      try { const r = await api.get("/api/products/next-barcode"); bcField.value = r.barcode; } catch (_) {}
+    }
+    const genBtn = form.querySelector(".gen-bc");
+    if (genBtn) genBtn.onclick = async () => {
+      try { const r = await api.get("/api/products/next-barcode"); bcField.value = r.barcode; }
+      catch (e) { msg.textContent = e.message; }
+    };
+    const printBtn = form.querySelector(".print-bc");
+    if (printBtn) printBtn.onclick = () => window.open("/api/products/" + product.id + "/label", "_blank");
+
+    // ---- Image picker (optional in the barcode flow) -----------------------
+    let MIN_IMG = 0, MAX_IMG = 10;
     const selected = []; // managed list of File objects
     if (!editing) {
       try {
         const info = await api.get("/api/settings/info");
-        MIN_IMG = info.min_product_images || 3;
         MAX_IMG = info.max_product_images || 10;
-        form.querySelector(".min-n").textContent = MIN_IMG;
         form.querySelector(".max-n").textContent = MAX_IMG;
       } catch (_) {}
       const fileInput = form.querySelector(".file-real");
@@ -935,13 +1283,10 @@
             discount: form.querySelector('[name="discount"]').value,
             min_stock_level: form.querySelector('[name="min_stock_level"]').value,
             description: form.querySelector('[name="description"]').value,
+            barcode: form.querySelector('[name="barcode"]').value,
             family_key: form.querySelector('[name="family_key"]').value,
           });
         } else {
-          if (selected.length < MIN_IMG) {
-            msg.textContent = `Please upload at least ${MIN_IMG} product images.`;
-            return;
-          }
           if (selected.length > MAX_IMG) {
             msg.textContent = `You can upload at most ${MAX_IMG} product images.`;
             return;
@@ -955,6 +1300,7 @@
           fd.append("quantity", form.querySelector('[name="quantity"]').value);
           fd.append("min_stock_level", form.querySelector('[name="min_stock_level"]').value);
           fd.append("description", form.querySelector('[name="description"]').value);
+          fd.append("barcode", form.querySelector('[name="barcode"]').value);
           fd.append("family_key", form.querySelector('[name="family_key"]').value);
           selected.forEach((f) => fd.append("images", f));
           await api.form("/api/products", fd);

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from ai.enrollment import enroll_image
 from ai.recognizer import AIRecognizer
-from backend.services.code_generator import next_product_code
+from backend.services.code_generator import next_barcode, next_product_code
 from config import settings
 from database.crud import repositories as repo
 from database.models import Product, ProductImage, Status
@@ -47,10 +47,16 @@ def create_product(
     quantity=0,
     min_stock_level=0,
     description: str | None = None,
+    barcode: str | None = None,
     family_key: str | None = None,
     image_sources: list[tuple[str, bytes]] | None = None,
 ) -> Product:
-    """image_sources: list of (filename, raw_bytes). At least MIN_PRODUCT_IMAGES."""
+    """image_sources: list of (filename, raw_bytes).
+
+    In the barcode workflow images are optional (one confirmation photo is
+    recommended but not required). If any images are supplied they are enrolled
+    for the Experimental AI recognizer, but they are no longer mandatory.
+    """
     name = require_non_empty(name, "Product name")
     selling_price = require_positive_number(selling_price, "Selling price")
     discount = require_positive_number(discount, "Discount")
@@ -63,12 +69,21 @@ def create_product(
     if repo.categories.get(session, category_id) is None:
         raise ValidationError("Category not found.")
 
+    # Barcode: use the provided one (must be unique) or auto-generate.
+    barcode = (barcode or "").strip()
+    if barcode:
+        clash = session.query(Product.id).filter(Product.barcode == barcode).first()
+        if clash:
+            raise ValidationError(f"Barcode {barcode} is already assigned to another product.")
+    else:
+        barcode = next_barcode(session)
+
     image_sources = image_sources or []
-    validate_min_images(len(image_sources))
 
     product = repo.products.create(
         session,
         product_code=next_product_code(session),
+        barcode=barcode,
         product_name=name,
         category_id=category_id,
         selling_price=selling_price,
@@ -121,6 +136,19 @@ def update_product(
             raise ValidationError("Minimum stock must be a whole number.")
     if "description" in fields:
         fields["description"] = (fields["description"] or None)
+    if "barcode" in fields:
+        bc = (fields["barcode"] or "").strip()
+        if bc:
+            clash = (
+                session.query(Product.id)
+                .filter(Product.barcode == bc, Product.id != product_id)
+                .first()
+            )
+            if clash:
+                raise ValidationError(f"Barcode {bc} is already assigned to another product.")
+            fields["barcode"] = bc
+        else:
+            fields["barcode"] = None
     # Quantity is never edited directly here — it changes only through the
     # inventory module (stock-in / adjust / sale) so history stays accurate.
     fields.pop("quantity", None)
@@ -171,6 +199,7 @@ def serialize(product: Product, session: Session) -> dict:
     return {
         "id": product.id,
         "product_code": product.product_code,
+        "barcode": product.barcode,
         "product_name": product.product_name,
         "category_id": product.category_id,
         "category_name": category.category_name if category else None,
@@ -185,4 +214,5 @@ def serialize(product: Product, session: Session) -> dict:
         "family_key": product.family_key,
         "image_count": len(images),
         "primary_image_id": images[0].id if images else None,
+        "image": f"/api/products/image/{images[0].id}" if images else None,
     }

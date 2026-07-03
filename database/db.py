@@ -65,6 +65,7 @@ def _ensure_columns() -> None:
             ("quantity", "INTEGER NOT NULL DEFAULT 0"),
             ("min_stock_level", "INTEGER NOT NULL DEFAULT 0"),
             ("description", "TEXT"),
+            ("barcode", "VARCHAR(64)"),
         ],
         "bills": [
             ("payment_method", "VARCHAR(16) NOT NULL DEFAULT 'cash'"),

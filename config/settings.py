@@ -39,6 +39,7 @@ SQL_ECHO: bool = _env_bool("RESVI_SQL_ECHO", False)
 
 # --- Code formats ------------------------------------------------------------
 PRODUCT_CODE_PREFIX: str = _env("RESVI_PRODUCT_CODE_PREFIX", "P")
+BARCODE_START: int = int(_env("RESVI_BARCODE_START", "1000"))  # first generated = 1001
 PRODUCT_CODE_PADDING: int = int(_env("RESVI_PRODUCT_CODE_PADDING", "6"))
 BILL_NUMBER_PREFIX: str = _env("RESVI_BILL_NUMBER_PREFIX", "BILL-")
 BILL_NUMBER_PADDING: int = int(_env("RESVI_BILL_NUMBER_PADDING", "6"))
@@ -50,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "0.6.1-upload"  # image picker (gallery/files), previews, min 3/max 10
+APP_VERSION: str = "0.8.0-voice"  # bright bill panel, voice search, card details
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

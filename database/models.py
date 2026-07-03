@@ -80,6 +80,7 @@ class Product(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     product_code: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    barcode: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
     product_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
     selling_price: Mapped[float] = mapped_column(Float, nullable=False)
