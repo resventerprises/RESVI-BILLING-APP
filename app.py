@@ -19,6 +19,7 @@ from database.db import init_db, session_scope
 
 
 def _register_blueprints(app: Flask) -> None:
+    from backend.routes.admin import admin_bp
     from backend.routes.categories import categories_bp
     from backend.routes.commerce import billing_bp, sales_bp, scan_bp
     from backend.routes.inventory import inventory_bp
@@ -37,6 +38,7 @@ def _register_blueprints(app: Flask) -> None:
         sales_bp,
         inventory_bp,
         settings_bp,
+        admin_bp,
     ):
         app.register_blueprint(bp)
 
