@@ -1717,6 +1717,31 @@
       </div>`)
     );
 
+    // Maintenance: remove duplicate products left by earlier imports.
+    const maint = el(`<div class="card">
+      <div class="setting-row" style="border:none"><span class="k">Duplicate products</span>
+        <span class="v muted">Merge items with the same name</span></div>
+      <button class="btn dedup" style="margin-top:10px">\uD83E\uDDF9 Remove duplicate products</button>
+      <div class="msg dedup-msg" style="margin-top:8px"></div>
+    </div>`);
+    maint.querySelector(".dedup").onclick = async (e) => {
+      const btn = e.target; const orig = btn.textContent;
+      const m = maint.querySelector(".dedup-msg");
+      if (!confirm("Merge products that share the same name and remove the extra copies? This keeps one of each.")) return;
+      btn.textContent = "Cleaning\u2026"; btn.disabled = true; m.textContent = "";
+      try {
+        const r = await api.post("/api/products/deduplicate", {});
+        m.className = "msg dedup-msg ok";
+        m.textContent = `Done \u2014 removed ${r.removed} duplicate(s), ${r.unique_products} unique products remain.`;
+        globalToast(`Removed ${r.removed} duplicates`);
+      } catch (err) {
+        m.className = "msg dedup-msg"; m.textContent = err.message;
+      } finally {
+        btn.textContent = orig; btn.disabled = false;
+      }
+    };
+    s.appendChild(maint);
+
     // Recognition status + rebuild.
     const rec = el(`<div class="card">
       <div class="setting-row"><span class="k">Recognizer</span><span class="v">${info.recognizer}</span></div>

@@ -203,12 +203,26 @@ def import_products(session: Session, recognizer, file_bytes: bytes,
             cat_id = _category_id(session, cat_cache, cell(raw, "category")) \
                 or _category_id(session, cat_cache, "Uncategorized")
 
-            existing = session.query(Product).filter(Product.barcode == barcode).first() if barcode else None
+            # UPSERT: match an existing product by barcode first, else by
+            # case-insensitive name. This stops re-imports creating duplicates.
+            from sqlalchemy import func as _func
+            existing = None
+            if barcode:
+                existing = session.query(Product).filter(Product.barcode == barcode).first()
+            if existing is None:
+                existing = (
+                    session.query(Product)
+                    .filter(_func.lower(Product.product_name) == name.lower())
+                    .first()
+                )
 
             if existing:
                 existing.product_name = name
                 existing.selling_price = price_val
                 existing.category_id = cat_id
+                # If matched by name and the row carries a barcode, adopt it.
+                if barcode and not existing.barcode:
+                    existing.barcode = barcode
                 if min_stock:
                     existing.min_stock_level = min_stock
                 if qty_val and (existing.quantity or 0) != qty_val:

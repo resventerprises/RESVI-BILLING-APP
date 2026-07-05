@@ -104,6 +104,43 @@ def import_products_route():
         return error("import_error", f"{type(exc).__name__}: {exc}", status=500)
 
 
+@products_bp.post("/deduplicate")
+def deduplicate_route():
+    """Merge duplicate products that share the same name (case-insensitive).
+
+    Keeps the oldest record of each name, moves its stock to the survivor, and
+    removes the extras. Fixes catalogues polluted by earlier repeated imports.
+    """
+    from collections import defaultdict
+    from database.models import Product
+
+    removed = 0
+    kept = 0
+    try:
+        with session_scope() as s:
+            groups = defaultdict(list)
+            for p in s.query(Product).order_by(Product.id).all():
+                groups[(p.product_name or "").strip().lower()].append(p)
+            for name, plist in groups.items():
+                if len(plist) < 2:
+                    kept += 1
+                    continue
+                survivor = plist[0]
+                for dup in plist[1:]:
+                    # Keep the larger stock so we don't lose inventory.
+                    if (dup.quantity or 0) > (survivor.quantity or 0):
+                        survivor.quantity = dup.quantity
+                    if not survivor.barcode and dup.barcode:
+                        survivor.barcode = dup.barcode
+                    s.delete(dup)
+                    removed += 1
+                kept += 1
+        return ok({"removed": removed, "unique_products": kept})
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.exception("Deduplicate failed")
+        return error("dedup_error", f"{type(exc).__name__}: {exc}", status=500)
+
+
 @products_bp.get("/next-barcode")
 def next_barcode_route():
     """Preview the next auto-generated barcode (does not consume it)."""

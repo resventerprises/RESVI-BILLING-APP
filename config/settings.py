@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "0.9.4-home-voice"  # home top-spacing fix + Voice Search tile
+APP_VERSION: str = "0.9.5-dedup"  # UPSERT by name+barcode, remove-duplicates tool
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 
