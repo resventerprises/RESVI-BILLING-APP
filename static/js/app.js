@@ -130,6 +130,7 @@
       ["categories", "Categories", "\uD83D\uDDC2\uFE0F"],
       ["inventory", "Inventory", "\uD83D\uDCCA"],
       ["history", "Bill history", "\uD83E\uDDFE"],
+      ["import-history", "Import History", "\uD83D\uDCE5"],
       ["daily", "Daily sales", "\uD83D\uDCC8"],
       ["ai-scan", "AI Scanner (Beta)", "\uD83E\uDDEA"],
       ["settings", "Settings", "\u2699\uFE0F"],
@@ -176,7 +177,7 @@
   // never interrupted; a new bill there already writes to the shared DB.
   let _lastDataVersion = null;
   let _lastSyncAt = null;
-  const REFRESH_SCREENS = new Set(["home", "products", "inventory", "history", "daily", "categories"]);
+  const REFRESH_SCREENS = new Set(["home", "products", "inventory", "history", "daily", "categories", "import-history"]);
   function updateSyncBadge() {
     const badges = document.querySelectorAll(".sync-badge");
     if (!badges.length) return;
@@ -1326,6 +1327,50 @@
         btn.disabled = false; btn.textContent = "Import products";
       }
     };
+  });
+
+  // ---- Import History ------------------------------------------------------
+  route("import-history", async () => {
+    view.appendChild(topbar("Import History"));
+    const s = screen();
+    const list = el(`<div class="list"></div>`);
+    s.appendChild(list);
+    view.appendChild(s);
+
+    async function load() {
+      list.innerHTML = `<div class="muted" style="padding:16px">Loading\u2026</div>`;
+      let rows = [];
+      try { rows = await api.get("/api/products/import/history"); } catch (e) {
+        list.innerHTML = `<div class="msg">${e.message}</div>`; return;
+      }
+      if (!rows.length) {
+        list.innerHTML = `<div class="empty"><div class="empty-ico">\uD83D\uDCE5</div>
+          <div>No imports yet.</div>
+          <div class="muted sm">Import an Excel file from Products \u2192 Import.</div></div>`;
+        return;
+      }
+      list.innerHTML = "";
+      rows.forEach((b) => {
+        const date = b.created_at ? new Date(b.created_at).toLocaleDateString() : "\u2014";
+        const row = el(`<div class="card ih-row">
+          <div class="ih-main">
+            <div class="ih-file">\uD83D\uDCC4 ${b.file_name}</div>
+            <div class="ih-meta muted">${date} \u00B7 ${b.product_count} products in catalogue</div>
+          </div>
+          <button class="btn ghost sm ih-del">Delete</button>
+        </div>`);
+        row.querySelector(".ih-del").onclick = async () => {
+          if (!confirm(`Delete all ${b.product_count} products imported from "${b.file_name}"?`)) return;
+          try {
+            const r = await api.del("/api/products/import/history/" + b.id);
+            globalToast(`Removed ${r.removed} products`);
+            load();
+          } catch (e) { alert(e.message); }
+        };
+        list.appendChild(row);
+      });
+    }
+    await load();
   });
 
   // ---- Product form (add / edit) -------------------------------------------

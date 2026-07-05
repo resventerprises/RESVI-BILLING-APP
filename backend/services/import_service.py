@@ -165,6 +165,12 @@ def import_products(session: Session, recognizer, file_bytes: bytes,
             if f.is_file() and f.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
                 disk_images.setdefault(f.name.lower(), f)
 
+    # Record this import as a batch so products can be listed/deleted by file.
+    from database.models import ImportBatch
+    batch = ImportBatch(file_name=filename or "import.xlsx")
+    session.add(batch)
+    session.flush()
+
     cat_cache: dict[str, int] = {}
     seen_barcodes: set[str] = set()
     created = updated = skipped = failed = 0
@@ -230,6 +236,7 @@ def import_products(session: Session, recognizer, file_bytes: bytes,
                     inventory_service.adjust(session, existing.id, qty_val - (existing.quantity or 0),
                                              remarks="Bulk import update")
                 product = existing
+                product.import_batch_id = batch.id
                 updated += 1
                 entry["status"] = "updated"
             else:
@@ -252,6 +259,7 @@ def import_products(session: Session, recognizer, file_bytes: bytes,
                     status=Status.ACTIVE,
                 )
                 session.flush()
+                product.import_batch_id = batch.id
                 if qty_val > 0:
                     from backend.services import inventory_service
                     inventory_service.stock_in(session, product.id, qty_val, remarks="Bulk import opening stock")
@@ -285,5 +293,7 @@ def import_products(session: Session, recognizer, file_bytes: bytes,
             entry["error"] = str(exc)
             report.append(entry)
 
+    batch.created_count = created
+    batch.updated_count = updated
     return {"created": created, "updated": updated, "skipped": skipped,
-            "failed": failed, "errors": [], "rows": report}
+            "failed": failed, "errors": [], "rows": report, "batch_id": batch.id}

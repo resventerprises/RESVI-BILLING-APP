@@ -141,6 +141,45 @@ def deduplicate_route():
         return error("dedup_error", f"{type(exc).__name__}: {exc}", status=500)
 
 
+@products_bp.get("/import/history")
+def import_history():
+    """List past imports for the Import History screen."""
+    from database.models import ImportBatch, Product
+    from sqlalchemy import func, select
+
+    with session_scope() as s:
+        rows = s.query(ImportBatch).order_by(ImportBatch.created_at.desc()).all()
+        out = []
+        for b in rows:
+            live = s.scalar(select(func.count(Product.id)).where(Product.import_batch_id == b.id)) or 0
+            out.append({
+                "id": b.id,
+                "file_name": b.file_name,
+                "created_at": b.created_at.isoformat() if b.created_at else None,
+                "created_count": b.created_count,
+                "updated_count": b.updated_count,
+                "product_count": live,
+            })
+    return ok(out)
+
+
+@products_bp.delete("/import/history/<int:batch_id>")
+def delete_import_batch(batch_id: int):
+    """Delete every product that belongs to this import, then the batch record."""
+    from database.models import ImportBatch, Product
+
+    with session_scope() as s:
+        batch = s.get(ImportBatch, batch_id)
+        if not batch:
+            return error("not_found", "Import not found.", status=404)
+        prods = s.query(Product).filter(Product.import_batch_id == batch_id).all()
+        removed = len(prods)
+        for p in prods:
+            s.delete(p)
+        s.delete(batch)
+    return ok({"removed": removed})
+
+
 @products_bp.get("/next-barcode")
 def next_barcode_route():
     """Preview the next auto-generated barcode (does not consume it)."""

@@ -96,6 +96,10 @@ class Product(Base, TimestampMixin):
     # Items that are the same product in different sizes share a family_key.
     # NULL => standalone product. Used to force variant disambiguation.
     family_key: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    # Which bulk import created/last-touched this product (for Import History).
+    import_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("import_batches.id"), nullable=True, index=True
+    )
 
     category: Mapped["Category"] = relationship(back_populates="products")
     images: Mapped[list["ProductImage"]] = relationship(
@@ -118,6 +122,18 @@ class ProductImage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
 
     product: Mapped["Product"] = relationship(back_populates="images")
+
+
+class ImportBatch(Base):
+    """One row per bulk Excel/CSV import, for the Import History screen."""
+
+    __tablename__ = "import_batches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    updated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False, index=True)
 
 
 class ProductEmbedding(Base):

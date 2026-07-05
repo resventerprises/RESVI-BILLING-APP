@@ -659,3 +659,8 @@ table { border-collapse: collapse; width: 100%; }
 
 /* Scan search hint line */
 .bc-hint { text-align: center; font-size: 12px; margin-top: 8px; }
+
+/* ---------- Import History ---------- */
+.ih-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ih-file { font-weight: 600; }
+.ih-meta { font-size: 13px; margin-top: 2px; }
