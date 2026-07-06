@@ -63,6 +63,18 @@ def detail(bill_id: int):
         return error("not_found", str(exc), status=404)
 
 
+@billing_bp.delete("/<int:bill_id>")
+def delete_one(bill_id: int):
+    """Permanently delete a bill; restores its sold stock. Reports update live."""
+    from backend.services import bill_delete_service
+
+    with session_scope() as s:
+        okd = bill_delete_service.delete_bill(s, bill_id)
+    if not okd:
+        return error("not_found", "Bill not found.", status=404)
+    return ok({"deleted": 1, "message": "Bill deleted"})
+
+
 @sales_bp.get("/daily")
 def daily():
     limit = request.args.get("limit", default=30, type=int)

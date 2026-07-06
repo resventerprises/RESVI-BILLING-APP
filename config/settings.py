@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.2.1-report-filters"  # advanced filter panel in Reports UI
+APP_VERSION: str = "1.3.0-bill-delete"  # delete bills (single/date/range/today/all) with stock restore
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

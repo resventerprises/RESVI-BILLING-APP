@@ -1911,15 +1911,65 @@
     view.appendChild(topbar("Bill history"));
     const s = screen();
     view.appendChild(s);
+
+    // Bulk delete tools (testing / admin).
+    const tools = el(`<details class="card bulk-del">
+      <summary>\uD83D\uDDD1 Bulk delete tools</summary>
+      <button class="btn ghost sm bd-today" style="margin-top:10px">Clear today's bills</button>
+      <div class="rep-minmax" style="margin-top:8px">
+        <div class="field"><label>Delete by date</label><input class="input bd-date" type="date"/></div>
+        <button class="btn ghost sm bd-date-go" style="align-self:end">Delete date</button>
+      </div>
+      <div class="rep-minmax">
+        <div class="field"><label>From</label><input class="input bd-from" type="date"/></div>
+        <div class="field"><label>To</label><input class="input bd-to" type="date"/></div>
+      </div>
+      <button class="btn ghost sm bd-range" style="width:auto">Delete range</button>
+      <button class="btn sm bd-all" style="width:auto;background:#fee2e2;color:#b91c1c;border:none;margin-left:8px">Clear ALL bills</button>
+    </details>`);
+    s.appendChild(tools);
+    const reloadHistory = () => go("history");
+    tools.querySelector(".bd-today").onclick = async () => {
+      if (!confirm("Delete all of today's bills? Stock will be restored.")) return;
+      const r = await api.post("/api/admin/bills/clear-today", {}); globalToast(r.message); reloadHistory();
+    };
+    tools.querySelector(".bd-date-go").onclick = async () => {
+      const d = tools.querySelector(".bd-date").value; if (!d) return alert("Pick a date.");
+      if (!confirm("Delete all bills on " + d + "?")) return;
+      const r = await api.post("/api/admin/bills/delete-by-date", { date: d }); globalToast(r.message); reloadHistory();
+    };
+    tools.querySelector(".bd-range").onclick = async () => {
+      const f = tools.querySelector(".bd-from").value, t = tools.querySelector(".bd-to").value;
+      if (!f || !t) return alert("Pick both dates.");
+      if (!confirm(`Delete all bills from ${f} to ${t}?`)) return;
+      const r = await api.post("/api/admin/bills/delete-by-range", { from: f, to: t }); globalToast(r.message); reloadHistory();
+    };
+    tools.querySelector(".bd-all").onclick = async () => {
+      if (!confirm("This will permanently delete ALL bills and reports. This cannot be undone. Continue?")) return;
+      const typed = prompt('Type exactly:  DELETE ALL BILLS');
+      if (typed !== "DELETE ALL BILLS") return alert("Confirmation text did not match. Cancelled.");
+      const r = await api.post("/api/admin/bills/clear-all", { confirm: "DELETE ALL BILLS" }); globalToast(r.message); reloadHistory();
+    };
+
     const bills = await api.get("/api/bills");
-    if (!bills.length) return s.appendChild(emptyBlock("\uD83E\uDDFE", "No bills yet."));
+    if (!bills.length) { s.appendChild(emptyBlock("\uD83E\uDDFE", "No bills yet.")); return; }
     bills.forEach((b) => {
       const d = new Date(b.bill_date);
-      const row = el(`<div class="card product-card" style="grid-template-columns:1fr auto">
-        <div><div class="name">${b.bill_number}</div>
+      const row = el(`<div class="card product-card" style="grid-template-columns:1fr auto auto;gap:10px;align-items:center">
+        <div class="bill-open" style="cursor:pointer"><div class="name">${b.bill_number}</div>
           <div class="meta">${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} \u00B7 ${b.total_items} items</div></div>
-        <div class="price">${money(b.grand_total)}</div></div>`);
-      row.onclick = () => go("bill", { id: b.id });
+        <div class="price">${money(b.grand_total)}</div>
+        <button class="btn ghost sm bill-del" title="Delete bill" style="width:auto">\uD83D\uDDD1</button></div>`);
+      row.querySelector(".bill-open").onclick = () => go("bill", { id: b.id });
+      row.querySelector(".bill-del").onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm(`This bill (${b.bill_number}) will be permanently deleted. Stock will be restored. Are you sure?`)) return;
+        try {
+          const r = await api.del("/api/bills/" + b.id);
+          globalToast(r.message || "Bill deleted");
+          row.remove();
+        } catch (err) { alert(err.message); }
+      };
       s.appendChild(row);
     });
   });

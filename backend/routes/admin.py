@@ -66,3 +66,67 @@ def reset_products():
     # poll will detect the change and refresh. No extra bump needed.
     current_app.logger.info("Database reset: all products, categories, imports cleared.")
     return ok({"success": True, "message": "Database reset successfully"})
+
+
+@admin_bp.post("/bills/delete-by-date")
+def bills_delete_by_date():
+    """Delete all bills on a given date. Body: {"date": "YYYY-MM-DD"}."""
+    from datetime import datetime
+
+    from backend.services import bill_delete_service
+
+    body = request.get_json(silent=True) or {}
+    try:
+        d = datetime.strptime(body.get("date", ""), "%Y-%m-%d").date()
+    except ValueError:
+        return error("validation_error", "date must be YYYY-MM-DD.")
+    with session_scope() as s:
+        n = bill_delete_service.delete_by_date(s, d)
+    return ok({"deleted": n, "message": f"Deleted {n} bill(s) on {d.strftime('%d-%m-%Y')}"})
+
+
+@admin_bp.post("/bills/delete-by-range")
+def bills_delete_by_range():
+    """Delete all bills in a date range. Body: {"from": "...", "to": "..."}."""
+    from datetime import datetime
+
+    from backend.services import bill_delete_service
+
+    body = request.get_json(silent=True) or {}
+    try:
+        d_from = datetime.strptime(body.get("from", ""), "%Y-%m-%d").date()
+        d_to = datetime.strptime(body.get("to", ""), "%Y-%m-%d").date()
+    except ValueError:
+        return error("validation_error", "from and to must be YYYY-MM-DD.")
+    if d_to < d_from:
+        return error("validation_error", "'to' is before 'from'.")
+    with session_scope() as s:
+        n = bill_delete_service.delete_by_range(s, d_from, d_to)
+    return ok({"deleted": n, "message": f"Deleted {n} bill(s)"})
+
+
+@admin_bp.post("/bills/clear-today")
+def bills_clear_today():
+    """Delete all of today's bills (testing helper)."""
+    from backend.services import bill_delete_service
+
+    with session_scope() as s:
+        n = bill_delete_service.clear_today(s)
+    return ok({"deleted": n, "message": f"Cleared {n} bill(s) from today"})
+
+
+@admin_bp.post("/bills/clear-all")
+def bills_clear_all():
+    """Delete ALL bills. Requires body {"confirm": "DELETE ALL BILLS"}."""
+    from backend.services import bill_delete_service
+
+    body = request.get_json(silent=True) or {}
+    if body.get("confirm") != "DELETE ALL BILLS":
+        return error(
+            "confirmation_required",
+            'This deletes ALL bills and cannot be undone. Resend with {"confirm": "DELETE ALL BILLS"}.',
+            status=400,
+        )
+    with session_scope() as s:
+        n = bill_delete_service.clear_all(s)
+    return ok({"deleted": n, "message": f"Deleted all {n} bill(s)"})

@@ -733,3 +733,8 @@ table { border-collapse: collapse; width: 100%; }
 .rep-filters summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 4px 0; }
 .rep-filters[open] summary { margin-bottom: 8px; }
 .rep-minmax { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* ---------- Bulk delete tools ---------- */
+.bulk-del summary { cursor: pointer; font-weight: 600; }
+.bulk-del .field { margin-top: 6px; }
+.bill-del { color: #b91c1c; }
