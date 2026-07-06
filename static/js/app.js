@@ -150,6 +150,7 @@
       ["history", "Bill history", "\uD83E\uDDFE"],
       ["import-history", "Import History", "\uD83D\uDCE5"],
       ["daily", "Daily sales", "\uD83D\uDCC8"],
+      ["reports", "Reports", "\uD83D\uDCC4"],
       ["ai-scan", "AI Scanner (Beta)", "\uD83E\uDDEA"],
       ["settings", "Settings", "\u2699\uFE0F"],
     ].forEach(([r, label, ico]) => {
@@ -1411,6 +1412,35 @@
       } finally {
         btn.disabled = false; btn.textContent = "Import products";
       }
+    };
+  });
+
+  // ---- Reports (Daily Sales PDF) -------------------------------------------
+  route("reports", async () => {
+    view.appendChild(topbar("Reports"));
+    const s = screen();
+    const today = new Date().toISOString().slice(0, 10);
+    const box = el(`<div class="form-narrow">
+      <div class="card">
+        <div class="rep-title">\uD83D\uDCC4 Daily Sales Report</div>
+        <div class="muted sm" style="margin-bottom:12px">Pick a date and download the PDF report.</div>
+        <div class="field"><label>Date</label>
+          <input class="input rep-date" type="date" value="${today}" max="${today}"/></div>
+        <button class="btn primary rep-dl">\u2B07 Download PDF</button>
+        <div class="msg rep-msg" style="margin-top:10px"></div>
+      </div>
+    </div>`);
+    s.appendChild(box);
+    view.appendChild(s);
+
+    box.querySelector(".rep-dl").onclick = () => {
+      const d = box.querySelector(".rep-date").value;
+      if (!d) { box.querySelector(".rep-msg").textContent = "Please pick a date."; return; }
+      // Opening the URL triggers the browser/WebView download with the right filename.
+      const url = "/api/reports/daily-pdf?date=" + encodeURIComponent(d);
+      window.open(url, "_blank");
+      box.querySelector(".rep-msg").className = "msg rep-msg ok";
+      box.querySelector(".rep-msg").textContent = "Report opened \u2014 check your downloads.";
     };
   });
 
