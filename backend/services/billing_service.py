@@ -24,14 +24,18 @@ def _line_total(unit_price: float, discount: float, quantity: int) -> float:
 
 
 def complete_bill(session: Session, cart_items: list[dict], payment_method: str = "cash",
-                  final_amount: float | None = None) -> Bill:
+                  final_amount: float | None = None,
+                  manual_items: list[dict] | None = None) -> Bill:
     """cart_items: [{"product_id": int, "quantity": int}, ...]
+
+    manual_items: [{"name": str, "price": float, "quantity": int}, ...] — one-off
+    items that exist only on this bill (not saved to products/inventory).
 
     final_amount: optional manual override (bargain). When given, the bill's
     grand total becomes this amount and the difference from subtotal is recorded
     as discount. Product prices are never changed.
     """
-    if not cart_items:
+    if not cart_items and not manual_items:
         raise ValidationError("Cannot complete an empty bill.")
     payment_method = (payment_method or "cash").lower()
     if payment_method not in {"cash", "upi", "card"}:
@@ -45,7 +49,7 @@ def complete_bill(session: Session, cart_items: list[dict], payment_method: str 
         if qty <= 0:
             continue
         merged[pid] = merged.get(pid, 0) + qty
-    if not merged:
+    if not merged and not manual_items:
         raise ValidationError("Cannot complete an empty bill.")
 
     bill = repo.bills.create(
@@ -83,6 +87,35 @@ def complete_bill(session: Session, cart_items: list[dict], payment_method: str 
         subtotal += unit * quantity
         total_discount += disc * quantity
         total_items += quantity
+
+    # Manual one-off items: billed but never saved to products/inventory.
+    for m in (manual_items or []):
+        name = str(m.get("name", "")).strip()
+        if not name:
+            raise ValidationError("Manual item name is required.")
+        try:
+            price = round(float(m.get("price", 0)), 2)
+            qty = int(m.get("quantity", 1))
+        except (TypeError, ValueError):
+            raise ValidationError("Manual item price/quantity must be numbers.")
+        if price < 0:
+            raise ValidationError("Manual item price cannot be negative.")
+        if qty <= 0:
+            continue
+        line = round(price * qty, 2)
+        session.add(
+            BillItem(
+                bill_id=bill.id,
+                product_id=None,
+                item_name=name,
+                quantity=qty,
+                unit_price=price,
+                discount=0.0,
+                total_price=line,
+            )
+        )
+        subtotal += price * qty
+        total_items += qty
 
     grand_total = round(subtotal - total_discount, 2)
 
@@ -145,8 +178,10 @@ def serialize_bill(bill: Bill, session: Session, with_items: bool = False) -> di
             {
                 "product_id": it.product_id,
                 "product_name": (
-                    p.product_name if (p := repo.products.get(session, it.product_id)) else "—"
+                    it.item_name if it.product_id is None
+                    else (p.product_name if (p := repo.products.get(session, it.product_id)) else "\u2014")
                 ),
+                "manual": it.product_id is None,
                 "quantity": it.quantity,
                 "unit_price": it.unit_price,
                 "discount": it.discount,

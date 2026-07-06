@@ -691,3 +691,21 @@ table { border-collapse: collapse; width: 100%; }
 .bt-row.bt-final { font-size: 18px; font-weight: 800; color: #111827; margin-top: 2px; }
 .bt-disc-row { color: #b45309; }
 .edit-final { margin-bottom: 8px; }
+
+/* ======================================================================
+   Bill panel: fixed footer, independently scrolling item list (all sizes)
+   ====================================================================== */
+.billpanel { display: flex; flex-direction: column; min-height: 0; }
+.billpanel .bill-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.billpanel .billbar { flex: 0 0 auto; position: sticky; bottom: 0; background: #fff;
+  border-top: 1px solid var(--border); padding-top: 10px; }
+.billpanel-head { flex: 0 0 auto; }
+
+@media (max-width: 767px) {
+  /* The scan screen is a full-height column: scanner/search on top,
+     bill panel fills the rest, footer pinned, list scrolls. */
+  .scan-screen { height: calc(100dvh - 56px); overflow: hidden; }
+  .bc-wrap { flex: 0 0 auto; }
+  .billpanel { flex: 1 1 auto; }
+  .bill-list { max-height: none; }  /* flex handles the height now */
+}

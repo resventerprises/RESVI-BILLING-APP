@@ -184,7 +184,8 @@ class BillItem(Base):
     bill_id: Mapped[int] = mapped_column(
         ForeignKey("bills.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False)
+    product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), nullable=True)
+    item_name: Mapped[str | None] = mapped_column(String(200), nullable=True)  # manual items
     quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     unit_price: Mapped[float] = mapped_column(Float, nullable=False)
     discount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)

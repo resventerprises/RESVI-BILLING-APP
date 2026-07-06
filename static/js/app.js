@@ -67,6 +67,7 @@
 
   const cart = {
     lines: [], // {product_id, name, price, discount, qty, imageId}
+    manual: [], // {name, price, qty} — one-off items, not in DB
     add(p) {
       const existing = this.lines.find((l) => l.product_id === p.product_id);
       if (existing) existing.qty += 1;
@@ -80,6 +81,10 @@
           qty: 1,
         });
       this.lastProductId = p.product_id;
+    },
+    addManual(name, price, qty) {
+      this.manual.push({ name, price, qty });
+      this.finalAmount = null;
     },
     undoLast() {
       if (!this.lines.length) return;
@@ -95,20 +100,29 @@
     },
     clear() {
       this.lines = [];
+      this.manual = [];
       this.lastProductId = null;
       this.finalAmount = null; // manual bargain override
     },
     count() {
-      return this.lines.reduce((s, l) => s + l.qty, 0);
+      return this.lines.reduce((s, l) => s + l.qty, 0)
+        + this.manual.reduce((s, m) => s + m.qty, 0);
     },
     total() {
-      return this.lines.reduce((s, l) => s + (l.price - l.discount) * l.qty, 0);
+      return this.lines.reduce((s, l) => s + (l.price - l.discount) * l.qty, 0)
+        + this.manual.reduce((s, m) => s + m.price * m.qty, 0);
     },
     finalTotal() {
       return this.finalAmount != null ? this.finalAmount : this.total();
     },
     payload() {
       return this.lines.map((l) => ({ product_id: l.product_id, quantity: l.qty }));
+    },
+    manualPayload() {
+      return this.manual.map((m) => ({ name: m.name, price: m.price, quantity: m.qty }));
+    },
+    isEmpty() {
+      return this.lines.length === 0 && this.manual.length === 0;
     },
   };
 
@@ -399,6 +413,9 @@
           </div>
           <button class="btn ghost sm edit-final" style="width:auto">\u270F\uFE0F Edit Final Amount</button>
           <div class="actions">
+            <button class="btn ghost add-manual">\u2795 Add Manual Item</button>
+          </div>
+          <div class="actions">
             <button class="btn ghost undo">Undo last</button>
             <button class="btn primary complete">Complete bill</button>
           </div>
@@ -429,7 +446,7 @@
       else { discRow.hidden = true; }
       scr.querySelector(".bt-total").textContent = money(final);
       listEl.innerHTML = "";
-      if (!cart.lines.length) { listEl.appendChild(el(`<div class="bill-empty">No items yet.<br/>Scan a barcode to begin.</div>`)); return; }
+      if (cart.isEmpty()) { listEl.appendChild(el(`<div class="bill-empty">No items yet.<br/>Scan a barcode or add a manual item.</div>`)); return; }
       cart.lines.forEach((l) => {
         const row = el(`<div class="bill-line">
           ${lineThumb(l.imageId)}
@@ -438,6 +455,16 @@
           <div class="bl-amt">${money((l.price - l.discount) * l.qty)}</div></div>`);
         row.querySelector(".minus").onclick = () => { cart.setQty(l.product_id, l.qty - 1); cart.finalAmount = null; refreshBill(); };
         row.querySelector(".plus").onclick = () => { cart.setQty(l.product_id, l.qty + 1); cart.finalAmount = null; refreshBill(); };
+        listEl.appendChild(row);
+      });
+      // Manual (one-off) items.
+      cart.manual.forEach((m, i) => {
+        const row = el(`<div class="bill-line">
+          <div class="bl-thumb ph">\u270F\uFE0F</div>
+          <div class="bl-name">${m.name}<div class="bl-unit">manual \u00B7 ${money(m.price)} each</div></div>
+          <div class="bl-qty"><span>x${m.qty}</span></div>
+          <div class="bl-amt">${money(m.price * m.qty)} <button class="mrm" title="Remove" style="border:none;background:none;cursor:pointer;color:#b91c1c">\u00D7</button></div></div>`);
+        row.querySelector(".mrm").onclick = () => { cart.manual.splice(i, 1); cart.finalAmount = null; refreshBill(); };
         listEl.appendChild(row);
       });
     };
@@ -454,6 +481,22 @@
       if (isNaN(val) || val < 0) { alert("Enter a valid amount (0 or more)."); return; }
       if (val > sub) { alert("Final amount cannot exceed the subtotal of " + money(sub) + "."); return; }
       cart.finalAmount = Math.round(val * 100) / 100;
+      refreshBill();
+    };
+    // Add a one-off manual item (not saved to products/inventory).
+    scr.querySelector(".add-manual").onclick = () => {
+      const name = prompt("Manual item name (e.g. Chocolate, Scale):");
+      if (name === null) return;
+      if (!name.trim()) { alert("Enter a name."); return; }
+      const priceStr = prompt(`Price of "${name.trim()}" (\u20B9):`, "0");
+      if (priceStr === null) return;
+      const price = parseFloat(priceStr);
+      if (isNaN(price) || price < 0) { alert("Enter a valid price."); return; }
+      const qtyStr = prompt("Quantity:", "1");
+      if (qtyStr === null) return;
+      const qty = parseInt(qtyStr, 10);
+      if (isNaN(qty) || qty < 1) { alert("Enter a valid quantity."); return; }
+      cart.addManual(name.trim(), Math.round(price * 100) / 100, qty);
       refreshBill();
     };
 
@@ -1166,7 +1209,7 @@
   }
 
   async function completeBill(refreshBill) {
-    if (!cart.count()) return;
+    if (cart.isEmpty()) return;
     // Choose payment method first.
     const pay = await new Promise((resolve) => {
       const m = el(`<div class="modal"><h3>Payment method</h3>
@@ -1185,6 +1228,7 @@
     try {
       const payload = { items: cart.payload(), payment_method: pay };
       if (cart.finalAmount != null) payload.final_amount = cart.finalAmount;
+      if (cart.manual.length) payload.manual_items = cart.manualPayload();
       const bill = await api.post("/api/bills/complete", payload);
       cart.clear();
       refreshBill();

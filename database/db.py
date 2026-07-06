@@ -85,6 +85,9 @@ def _ensure_columns() -> None:
         "bills": [
             ("payment_method", "VARCHAR(16) NOT NULL DEFAULT 'cash'"),
         ],
+        "bill_items": [
+            ("item_name", "VARCHAR(200)"),
+        ],
     }
     inspector = inspect(engine)
     existing_tables = set(inspector.get_table_names())
@@ -96,6 +99,13 @@ def _ensure_columns() -> None:
             for name, ddl in cols:
                 if name not in have:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+        # Manual bill items have no product_id, so relax the old NOT NULL
+        # constraint on existing PostgreSQL databases (no-op on SQLite).
+        if "bill_items" in existing_tables and engine.dialect.name == "postgresql":
+            try:
+                conn.execute(text("ALTER TABLE bill_items ALTER COLUMN product_id DROP NOT NULL"))
+            except Exception:
+                pass
 
 
 def init_db() -> None:
