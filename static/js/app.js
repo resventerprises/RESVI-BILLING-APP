@@ -177,6 +177,7 @@
     renderSidebar(name);
     closeDrawer(); // any navigation closes the mobile drawer
     view.innerHTML = "";
+    view.classList.remove("scan-active");
     try {
       await fn(params);
     } catch (e) {
@@ -381,6 +382,7 @@
 
   // ---- Barcode scanner (PRIMARY billing flow) -------------------------------
   route("scan", async (params = {}) => {
+    document.getElementById("view").classList.add("scan-active");
     view.appendChild(topbar("Barcode Scanner", { back: true }));
     const scr = el(`<div class="scan-screen">
       <div class="scan-wrap bc-wrap">
