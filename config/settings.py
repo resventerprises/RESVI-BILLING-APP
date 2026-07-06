@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.1.0-daily-report"  # daily sales report PDF download
+APP_VERSION: str = "1.2.1-report-filters"  # advanced filter panel in Reports UI
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

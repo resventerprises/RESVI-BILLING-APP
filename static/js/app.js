@@ -1415,33 +1415,133 @@
     };
   });
 
-  // ---- Reports (Daily Sales PDF) -------------------------------------------
+  // ---- Reports (Daily / Monthly / Custom, PDF + Excel) ---------------------
   route("reports", async () => {
     view.appendChild(topbar("Reports"));
     const s = screen();
     const today = new Date().toISOString().slice(0, 10);
+    const yr = new Date().getFullYear();
+    const mo = new Date().getMonth() + 1;
+    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
     const box = el(`<div class="form-narrow">
-      <div class="card">
-        <div class="rep-title">\uD83D\uDCC4 Daily Sales Report</div>
-        <div class="muted sm" style="margin-bottom:12px">Pick a date and download the PDF report.</div>
-        <div class="field"><label>Date</label>
-          <input class="input rep-date" type="date" value="${today}" max="${today}"/></div>
-        <button class="btn primary rep-dl">\u2B07 Download PDF</button>
-        <div class="msg rep-msg" style="margin-top:10px"></div>
+      <div class="rep-tabs">
+        <button class="rep-tab active" data-t="daily">Daily</button>
+        <button class="rep-tab" data-t="monthly">Monthly</button>
+        <button class="rep-tab" data-t="custom">Custom Range</button>
       </div>
+      <div class="card rep-panel">
+        <div class="rep-fields"></div>
+        <details class="rep-filters">
+          <summary>\uD83D\uDD0D Advanced filters</summary>
+          <div class="field"><label>Category</label>
+            <select class="input f-cat"><option value="">All categories</option></select></div>
+          <div class="field"><label>Product name contains</label>
+            <input class="input f-prod" type="text" placeholder="e.g. Notebook"/></div>
+          <div class="field"><label>Bill number contains</label>
+            <input class="input f-bill" type="text" placeholder="e.g. BILL-0001"/></div>
+          <div class="rep-minmax">
+            <div class="field"><label>Min amount</label><input class="input f-min" type="number" inputmode="decimal" placeholder="0"/></div>
+            <div class="field"><label>Max amount</label><input class="input f-max" type="number" inputmode="decimal" placeholder="\u221e"/></div>
+          </div>
+          <button class="btn ghost sm f-clear" style="width:auto">Clear filters</button>
+        </details>
+        <div class="rep-actions">
+          <button class="btn ghost rep-view">\uD83D\uDC41 View Report</button>
+          <button class="btn primary rep-pdf">\u2B07 PDF</button>
+          <button class="btn primary rep-xls">\u2B07 Excel</button>
+        </div>
+        <div class="msg rep-msg"></div>
+      </div>
+      <div class="rep-output"></div>
     </div>`);
-    s.appendChild(box);
-    view.appendChild(s);
+    s.appendChild(box); view.appendChild(s);
 
-    box.querySelector(".rep-dl").onclick = () => {
-      const d = box.querySelector(".rep-date").value;
-      if (!d) { box.querySelector(".rep-msg").textContent = "Please pick a date."; return; }
-      // Opening the URL triggers the browser/WebView download with the right filename.
-      const url = "/api/reports/daily-pdf?date=" + encodeURIComponent(d);
-      window.open(url, "_blank");
-      box.querySelector(".rep-msg").className = "msg rep-msg ok";
-      box.querySelector(".rep-msg").textContent = "Report opened \u2014 check your downloads.";
+    let kind = "daily";
+    const fields = box.querySelector(".rep-fields");
+    const out = box.querySelector(".rep-output");
+
+    function renderFields() {
+      if (kind === "daily") {
+        fields.innerHTML = `<div class="field"><label>Date</label>
+          <input class="input f-date" type="date" value="${today}" max="${today}"/></div>`;
+      } else if (kind === "monthly") {
+        const opts = months.map((m, i) => `<option value="${i + 1}" ${i + 1 === mo ? "selected" : ""}>${m}</option>`).join("");
+        const years = [yr, yr - 1, yr - 2].map((y) => `<option value="${y}">${y}</option>`).join("");
+        fields.innerHTML = `<div class="field"><label>Month</label><select class="input f-month">${opts}</select></div>
+          <div class="field"><label>Year</label><select class="input f-year">${years}</select></div>`;
+      } else {
+        fields.innerHTML = `<div class="field"><label>From</label><input class="input f-from" type="date" value="${today}" max="${today}"/></div>
+          <div class="field"><label>To</label><input class="input f-to" type="date" value="${today}" max="${today}"/></div>`;
+      }
+    }
+    function query() {
+      const p = new URLSearchParams({ type: kind });
+      if (kind === "daily") p.set("date", box.querySelector(".f-date").value);
+      else if (kind === "monthly") { p.set("year", box.querySelector(".f-year").value); p.set("month", box.querySelector(".f-month").value); }
+      else { p.set("from", box.querySelector(".f-from").value); p.set("to", box.querySelector(".f-to").value); }
+      // Advanced filters (all optional).
+      const cat = box.querySelector(".f-cat").value;
+      const prod = box.querySelector(".f-prod").value.trim();
+      const bill = box.querySelector(".f-bill").value.trim();
+      const min = box.querySelector(".f-min").value;
+      const max = box.querySelector(".f-max").value;
+      if (cat) p.set("category_id", cat);
+      if (prod) p.set("product", prod);
+      if (bill) p.set("bill_number", bill);
+      if (min !== "") p.set("min_amount", min);
+      if (max !== "") p.set("max_amount", max);
+      return p.toString();
+    }
+    // Populate categories in the filter dropdown.
+    (async () => {
+      try {
+        const cats = await api.get("/api/categories");
+        const sel = box.querySelector(".f-cat");
+        cats.forEach((c) => {
+          const o = document.createElement("option");
+          o.value = c.id; o.textContent = c.category_name;
+          sel.appendChild(o);
+        });
+      } catch (_) {}
+    })();
+    box.querySelector(".f-clear").onclick = (e) => {
+      e.preventDefault();
+      box.querySelector(".f-cat").value = "";
+      box.querySelector(".f-prod").value = "";
+      box.querySelector(".f-bill").value = "";
+      box.querySelector(".f-min").value = "";
+      box.querySelector(".f-max").value = "";
     };
+    box.querySelectorAll(".rep-tab").forEach((t) => {
+      t.onclick = () => {
+        box.querySelectorAll(".rep-tab").forEach((x) => x.classList.remove("active"));
+        t.classList.add("active"); kind = t.dataset.t; renderFields(); out.innerHTML = "";
+      };
+    });
+    box.querySelector(".rep-pdf").onclick = () => window.open("/api/reports/pdf?" + query(), "_blank");
+    box.querySelector(".rep-xls").onclick = () => window.open("/api/reports/excel?" + query(), "_blank");
+    box.querySelector(".rep-view").onclick = async () => {
+      out.innerHTML = `<div class="muted" style="padding:14px">Loading\u2026</div>`;
+      try {
+        const r = await api.get("/api/reports/view?" + query());
+        out.innerHTML = `
+          <div class="card">
+            <div class="rep-h">${r.report_type}</div><div class="muted sm">${r.period}</div>
+            <div class="rep-sum">
+              <div><span>Total Bills</span><b>${r.total_bills}</b></div>
+              <div><span>Items Sold</span><b>${r.total_items}</b></div>
+              <div><span>Gross</span><b>${money(r.gross)}</b></div>
+              <div><span>Discount</span><b>${money(r.discount)}</b></div>
+              <div><span>Net Sales</span><b class="net">${money(r.net)}</b></div>
+            </div>
+          </div>
+          ${r.top_products.length ? `<div class="card"><div class="rep-h">Top Products</div>
+            ${r.top_products.map((p) => `<div class="rep-row"><span>${p.name}</span><span>${p.qty} \u00B7 ${money(p.revenue)}</span></div>`).join("")}</div>` : ""}
+          ${r.bills.length ? `<div class="card"><div class="rep-h">Bills (${r.bills.length})</div>
+            ${r.bills.map((b) => `<div class="rep-row"><span>${b.bill_number} \u00B7 ${b.time}</span><span>${b.items} items \u00B7 ${money(b.amount)}</span></div>`).join("")}</div>` : `<div class="empty">No bills in this period.</div>`}`;
+      } catch (e) { out.innerHTML = `<div class="msg">${e.message}</div>`; }
+    };
+    renderFields();
   });
 
   // ---- Import History ------------------------------------------------------

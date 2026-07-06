@@ -714,3 +714,22 @@ table { border-collapse: collapse; width: 100%; }
 
 /* ---------- Reports ---------- */
 .rep-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+
+/* ---------- Reports ---------- */
+.rep-tabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.rep-tab { flex: 1; min-width: 90px; padding: 10px; border: 1px solid var(--border); background: #fff; border-radius: 10px; font-weight: 600; cursor: pointer; min-height: 44px; }
+.rep-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.rep-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.rep-actions .btn { flex: 1; min-width: 90px; min-height: 44px; }
+.rep-h { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
+.rep-sum { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.rep-sum > div { display: flex; justify-content: space-between; padding: 8px 10px; background: var(--surface-2); border-radius: 8px; }
+.rep-sum .net { color: var(--primary); }
+.rep-row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.rep-output { margin-top: 12px; }
+
+/* ---------- Reports advanced filters ---------- */
+.rep-filters { margin: 4px 0 10px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.rep-filters summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 4px 0; }
+.rep-filters[open] summary { margin-bottom: 8px; }
+.rep-minmax { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
