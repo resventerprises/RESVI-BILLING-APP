@@ -96,12 +96,16 @@
     clear() {
       this.lines = [];
       this.lastProductId = null;
+      this.finalAmount = null; // manual bargain override
     },
     count() {
       return this.lines.reduce((s, l) => s + l.qty, 0);
     },
     total() {
       return this.lines.reduce((s, l) => s + (l.price - l.discount) * l.qty, 0);
+    },
+    finalTotal() {
+      return this.finalAmount != null ? this.finalAmount : this.total();
     },
     payload() {
       return this.lines.map((l) => ({ product_id: l.product_id, quantity: l.qty }));
@@ -388,7 +392,12 @@
         <div class="bc-found" hidden></div>
         <div class="bill-list"></div>
         <div class="billbar">
-          <div class="summary"><span class="count"></span><span class="total"></span></div>
+          <div class="bill-totals">
+            <div class="bt-row"><span class="bt-count"></span><span class="bt-sub"></span></div>
+            <div class="bt-row bt-disc-row" hidden><span>Discount</span><span class="bt-disc"></span></div>
+            <div class="bt-row bt-final"><span>Final Amount</span><span class="bt-total"></span></div>
+          </div>
+          <button class="btn ghost sm edit-final" style="width:auto">\u270F\uFE0F Edit Final Amount</button>
           <div class="actions">
             <button class="btn ghost undo">Undo last</button>
             <button class="btn primary complete">Complete bill</button>
@@ -409,8 +418,16 @@
     const setStatus = (state, text) => { ssDot.className = "ss-dot " + state; if (text != null) ssText.textContent = text; };
 
     const refreshBill = () => {
-      scr.querySelector(".count").textContent = cart.count() + " item" + (cart.count() === 1 ? "" : "s");
-      scr.querySelector(".total").textContent = money(cart.total());
+      const count = cart.count();
+      const sub = cart.total();
+      const final = cart.finalTotal();
+      const disc = Math.max(0, sub - final);
+      scr.querySelector(".bt-count").textContent = count + " item" + (count === 1 ? "" : "s");
+      scr.querySelector(".bt-sub").textContent = money(sub);
+      const discRow = scr.querySelector(".bt-disc-row");
+      if (disc > 0) { discRow.hidden = false; scr.querySelector(".bt-disc").textContent = "\u2212" + money(disc); }
+      else { discRow.hidden = true; }
+      scr.querySelector(".bt-total").textContent = money(final);
       listEl.innerHTML = "";
       if (!cart.lines.length) { listEl.appendChild(el(`<div class="bill-empty">No items yet.<br/>Scan a barcode to begin.</div>`)); return; }
       cart.lines.forEach((l) => {
@@ -419,14 +436,26 @@
           <div class="bl-name">${l.name}<div class="bl-unit">${money(l.price - l.discount)} each</div></div>
           <div class="bl-qty"><button class="minus">\u2212</button><span>${l.qty}</span><button class="plus">+</button></div>
           <div class="bl-amt">${money((l.price - l.discount) * l.qty)}</div></div>`);
-        row.querySelector(".minus").onclick = () => { cart.setQty(l.product_id, l.qty - 1); refreshBill(); };
-        row.querySelector(".plus").onclick = () => { cart.setQty(l.product_id, l.qty + 1); refreshBill(); };
+        row.querySelector(".minus").onclick = () => { cart.setQty(l.product_id, l.qty - 1); cart.finalAmount = null; refreshBill(); };
+        row.querySelector(".plus").onclick = () => { cart.setQty(l.product_id, l.qty + 1); cart.finalAmount = null; refreshBill(); };
         listEl.appendChild(row);
       });
     };
     refreshBill();
-    scr.querySelector(".undo").onclick = () => { cart.undoLast(); vibrate(10); refreshBill(); };
+    scr.querySelector(".undo").onclick = () => { cart.undoLast(); cart.finalAmount = null; vibrate(10); refreshBill(); };
     scr.querySelector(".complete").onclick = () => completeBill(refreshBill);
+    // Manual final amount (bargain).
+    scr.querySelector(".edit-final").onclick = async () => {
+      if (!cart.count()) { alert("Add items to the bill first."); return; }
+      const sub = cart.total();
+      const entered = prompt(`Subtotal is ${money(sub)}.\nEnter the final amount to collect:`, String(Math.round(cart.finalTotal())));
+      if (entered === null) return;
+      const val = parseFloat(entered);
+      if (isNaN(val) || val < 0) { alert("Enter a valid amount (0 or more)."); return; }
+      if (val > sub) { alert("Final amount cannot exceed the subtotal of " + money(sub) + "."); return; }
+      cart.finalAmount = Math.round(val * 100) / 100;
+      refreshBill();
+    };
 
     // Show the found product (image + name + price + stock) for confirmation.
     function showFound(p) {
@@ -615,6 +644,7 @@
     } else {
       startBtn.onclick = async () => {
         try {
+          scr.classList.add("cam-on"); // reveal the camera preview
           bcScanner = new Html5Qrcode("bc-reader", { verbose: false });
           await bcScanner.start({ facingMode: "environment" },
             { fps: 10, qrbox: { width: 260, height: 160 } },
@@ -623,10 +653,16 @@
           startBtn.disabled = true; stopBtn.disabled = false;
           setStatus("scanning", "Point at a barcode\u2026");
         } catch (e) {
+          scr.classList.remove("cam-on");
           setStatus("error", "Camera error: " + (e.message || e));
         }
       };
-      stopBtn.onclick = async () => { await stopBarcodeScanner(); startBtn.disabled = false; stopBtn.disabled = true; setStatus("idle", "Scanner stopped"); };
+      stopBtn.onclick = async () => {
+        await stopBarcodeScanner();
+        scr.classList.remove("cam-on");
+        startBtn.disabled = false; stopBtn.disabled = true;
+        setStatus("idle", "Scanner stopped");
+      };
     }
   });
 
@@ -1147,11 +1183,14 @@
     });
     if (!pay) return;
     try {
-      const bill = await api.post("/api/bills/complete", { items: cart.payload(), payment_method: pay });
+      const payload = { items: cart.payload(), payment_method: pay };
+      if (cart.finalAmount != null) payload.final_amount = cart.finalAmount;
+      const bill = await api.post("/api/bills/complete", payload);
       cart.clear();
       refreshBill();
+      const discLine = bill.total_discount > 0 ? ` \u00B7 saved ${money(bill.total_discount)}` : "";
       const m = el(`<div class="modal"><h3>Bill saved</h3>
-        <div class="sub">${bill.bill_number} \u00B7 ${money(bill.grand_total)} \u00B7 ${bill.payment_method.toUpperCase()}</div>
+        <div class="sub">${bill.bill_number} \u00B7 ${money(bill.grand_total)} \u00B7 ${bill.payment_method.toUpperCase()}${discLine}</div>
         <button class="btn primary">Start new bill</button></div>`);
       const ref = modal(m);
       m.querySelector("button").onclick = () => ref.resolve();

@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "0.9.7-admin-reset"  # guarded reset-products admin endpoint
+APP_VERSION: str = "0.9.8-bargain"  # camera-on-demand, visible bill items, manual final amount
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

@@ -23,8 +23,14 @@ def _line_total(unit_price: float, discount: float, quantity: int) -> float:
     return round((unit_price - discount) * quantity, 2)
 
 
-def complete_bill(session: Session, cart_items: list[dict], payment_method: str = "cash") -> Bill:
-    """cart_items: [{"product_id": int, "quantity": int}, ...]"""
+def complete_bill(session: Session, cart_items: list[dict], payment_method: str = "cash",
+                  final_amount: float | None = None) -> Bill:
+    """cart_items: [{"product_id": int, "quantity": int}, ...]
+
+    final_amount: optional manual override (bargain). When given, the bill's
+    grand total becomes this amount and the difference from subtotal is recorded
+    as discount. Product prices are never changed.
+    """
     if not cart_items:
         raise ValidationError("Cannot complete an empty bill.")
     payment_method = (payment_method or "cash").lower()
@@ -79,6 +85,20 @@ def complete_bill(session: Session, cart_items: list[dict], payment_method: str 
         total_items += quantity
 
     grand_total = round(subtotal - total_discount, 2)
+
+    # Manual final-amount (bargain): override grand total, book the rest as discount.
+    if final_amount is not None:
+        try:
+            final_amount = round(float(final_amount), 2)
+        except (TypeError, ValueError):
+            raise ValidationError("Final amount must be a number.")
+        if final_amount < 0:
+            raise ValidationError("Final amount cannot be negative.")
+        if final_amount > round(subtotal, 2):
+            raise ValidationError("Final amount cannot exceed the subtotal.")
+        total_discount = round(subtotal - final_amount, 2)
+        grand_total = final_amount
+
     repo.bills.update(
         session,
         bill,

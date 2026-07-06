@@ -664,3 +664,30 @@ table { border-collapse: collapse; width: 100%; }
 .ih-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .ih-file { font-weight: 600; }
 .ih-meta { font-size: 13px; margin-top: 2px; }
+
+/* ======================================================================
+   Scanner: camera hidden until Start; compact on mobile so bill shows
+   ====================================================================== */
+/* Hide the camera preview by default; reveal only while scanning. */
+#bc-reader { display: none; }
+.scan-screen.cam-on #bc-reader { display: block; }
+.scan-screen.cam-on .bc-reader { min-height: 200px; }
+
+/* Mobile: keep the camera compact and the bill visible without scrolling. */
+@media (max-width: 767px) {
+  .scan-screen { display: flex; flex-direction: column; }
+  .bc-wrap { min-height: 0; }                 /* no forced tall camera block */
+  .scan-screen.cam-on #bc-reader { max-height: 180px; }
+  .scan-screen.cam-on .bc-reader { min-height: 150px; max-height: 180px; }
+  #bc-reader video { max-height: 180px !important; object-fit: cover; }
+  .billpanel { width: 100%; }
+  .bill-list { max-height: 42vh; overflow-y: auto; }  /* items scroll, totals stay */
+  .billbar { position: sticky; bottom: 0; background: #fff; }
+}
+
+/* ---------- Bill totals (subtotal / discount / final) ---------- */
+.bill-totals { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.bt-row { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); }
+.bt-row.bt-final { font-size: 18px; font-weight: 800; color: #111827; margin-top: 2px; }
+.bt-disc-row { color: #b45309; }
+.edit-final { margin-bottom: 8px; }

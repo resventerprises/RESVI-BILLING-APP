@@ -37,9 +37,10 @@ def complete():
     body = request.get_json(silent=True) or {}
     items = body.get("items", [])
     payment_method = body.get("payment_method", "cash")
+    final_amount = body.get("final_amount", None)
     try:
         with session_scope() as s:
-            bill = billing_service.complete_bill(s, items, payment_method)
+            bill = billing_service.complete_bill(s, items, payment_method, final_amount=final_amount)
             return ok(billing_service.serialize_bill(bill, s, with_items=True), status=201)
     except ValidationError as exc:
         return error("validation_error", str(exc))
