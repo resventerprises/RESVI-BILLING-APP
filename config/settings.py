@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.0.0-responsive-bill"  # fixed bill footer viewport, cleaned CSS conflicts
+APP_VERSION: str = "1.0.1-soft-delete"  # import delete archives products, keeps bills (no FK error)
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

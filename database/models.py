@@ -133,6 +133,7 @@ class ImportBatch(Base):
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     created_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False, index=True)
 
 

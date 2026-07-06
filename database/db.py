@@ -88,6 +88,9 @@ def _ensure_columns() -> None:
         "bill_items": [
             ("item_name", "VARCHAR(200)"),
         ],
+        "import_batches": [
+            ("status", "VARCHAR(16) NOT NULL DEFAULT 'active'"),
+        ],
     }
     inspector = inspect(engine)
     existing_tables = set(inspector.get_table_names())

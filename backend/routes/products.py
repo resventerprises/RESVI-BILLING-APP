@@ -21,7 +21,9 @@ def _recognizer():
 def list_products():
     term = request.args.get("q")
     category_id = request.args.get("category_id", type=int)
-    only_active = request.args.get("active") == "1"
+    # Archived products (status=inactive) are hidden everywhere by default.
+    # Pass include_inactive=1 explicitly to see them; active=1 also forces active-only.
+    only_active = request.args.get("include_inactive") != "1"
     with session_scope() as s:
         items = product_service.search_products(
             s, term=term, category_id=category_id, only_active=only_active
@@ -144,14 +146,23 @@ def deduplicate_route():
 @products_bp.get("/import/history")
 def import_history():
     """List past imports for the Import History screen."""
-    from database.models import ImportBatch, Product
+    from database.models import ImportBatch, Product, Status
     from sqlalchemy import func, select
 
     with session_scope() as s:
-        rows = s.query(ImportBatch).order_by(ImportBatch.created_at.desc()).all()
+        rows = (
+            s.query(ImportBatch)
+            .filter(ImportBatch.status != "deleted")
+            .order_by(ImportBatch.created_at.desc())
+            .all()
+        )
         out = []
         for b in rows:
-            live = s.scalar(select(func.count(Product.id)).where(Product.import_batch_id == b.id)) or 0
+            live = s.scalar(
+                select(func.count(Product.id)).where(
+                    Product.import_batch_id == b.id, Product.status == Status.ACTIVE
+                )
+            ) or 0
             out.append({
                 "id": b.id,
                 "file_name": b.file_name,
@@ -165,19 +176,44 @@ def import_history():
 
 @products_bp.delete("/import/history/<int:batch_id>")
 def delete_import_batch(batch_id: int):
-    """Delete every product that belongs to this import, then the batch record."""
-    from database.models import ImportBatch, Product
+    """Archive an import without breaking sales history.
+
+    Products from this import that appear on any bill are ARCHIVED
+    (status=inactive) so bills/bill_items/reports stay intact. Products never
+    sold are safely hard-deleted to keep the catalogue clean. The import batch
+    itself is marked deleted. Bills and bill items are never touched.
+    """
+    from database.models import BillItem, ImportBatch, Product, Status
 
     with session_scope() as s:
         batch = s.get(ImportBatch, batch_id)
         if not batch:
             return error("not_found", "Import not found.", status=404)
+
         prods = s.query(Product).filter(Product.import_batch_id == batch_id).all()
-        removed = len(prods)
+        archived = 0
+        deleted = 0
         for p in prods:
-            s.delete(p)
-        s.delete(batch)
-    return ok({"removed": removed})
+            in_a_bill = s.query(BillItem.id).filter(BillItem.product_id == p.id).first() is not None
+            if in_a_bill:
+                p.status = Status.INACTIVE       # archive: hidden everywhere, bill history safe
+                archived += 1
+            else:
+                # Never sold -> safe to remove; clear its images/embeddings first.
+                from database.models import ProductEmbedding, ProductImage
+                s.query(ProductEmbedding).filter(ProductEmbedding.product_id == p.id).delete()
+                s.query(ProductImage).filter(ProductImage.product_id == p.id).delete()
+                s.delete(p)
+                deleted += 1
+
+        batch.status = "deleted"
+
+    return ok({
+        "ok": True,
+        "message": "Import archived successfully",
+        "archived_products": archived,
+        "deleted_products": deleted,
+    })
 
 
 @products_bp.get("/next-barcode")
