@@ -1217,14 +1217,16 @@
 
   async function completeBill(refreshBill) {
     if (cart.isEmpty()) return;
+    const total = cart.finalTotal();
     // Choose payment method first.
     const pay = await new Promise((resolve) => {
       const m = el(`<div class="modal"><h3>Payment method</h3>
-        <div class="sub">${cart.count()} item(s) \u00B7 ${money(cart.total())}</div>
+        <div class="sub">${cart.count()} item(s) \u00B7 ${money(total)}</div>
         <div class="pay-grid">
           <button class="pay-opt" data-m="cash">\uD83D\uDCB5 Cash</button>
           <button class="pay-opt" data-m="upi">\uD83D\uDCF1 UPI</button>
           <button class="pay-opt" data-m="card">\uD83D\uDCB3 Card</button>
+          <button class="pay-opt" data-m="split">\u2702\uFE0F Split</button>
         </div>
         <button class="btn ghost cancel" style="margin-top:10px">Cancel</button></div>`);
       const ref = modal(m);
@@ -1232,10 +1234,45 @@
       m.querySelector(".cancel").onclick = () => { ref.resolve(); resolve(null); };
     });
     if (!pay) return;
+
+    // Split payment: collect cash/upi/card amounts with live remaining check.
+    let split = null;
+    if (pay === "split") {
+      split = await new Promise((resolve) => {
+        const m = el(`<div class="modal"><h3>Split payment</h3>
+          <div class="sub">Bill total: ${money(total)}</div>
+          <div class="field"><label>\uD83D\uDCB5 Cash</label><input class="input sp-cash" type="number" inputmode="decimal" value="0"/></div>
+          <div class="field"><label>\uD83D\uDCF1 UPI</label><input class="input sp-upi" type="number" inputmode="decimal" value="0"/></div>
+          <div class="field"><label>\uD83D\uDCB3 Card</label><input class="input sp-card" type="number" inputmode="decimal" value="0"/></div>
+          <div class="sp-remaining" style="font-weight:700;margin:8px 0"></div>
+          <button class="btn primary sp-ok">Confirm</button>
+          <button class="btn ghost sp-cancel" style="margin-top:8px">Cancel</button></div>`);
+        const ref = modal(m);
+        const get = (c) => parseFloat(m.querySelector(c).value) || 0;
+        const rem = m.querySelector(".sp-remaining");
+        const update = () => {
+          const paid = get(".sp-cash") + get(".sp-upi") + get(".sp-card");
+          const r = Math.round((total - paid) * 100) / 100;
+          rem.textContent = r === 0 ? "\u2713 Balanced" : (r > 0 ? `Remaining: ${money(r)}` : `Over by ${money(-r)}`);
+          rem.style.color = r === 0 ? "#15803d" : "#b91c1c";
+        };
+        m.querySelectorAll("input").forEach((i) => (i.oninput = update));
+        update();
+        m.querySelector(".sp-ok").onclick = () => {
+          const parts = { cash: get(".sp-cash"), upi: get(".sp-upi"), card: get(".sp-card") };
+          const paid = Math.round((parts.cash + parts.upi + parts.card) * 100) / 100;
+          if (paid !== Math.round(total * 100) / 100) { alert("Payment total does not match bill amount."); return; }
+          ref.resolve(); resolve(parts);
+        };
+        m.querySelector(".sp-cancel").onclick = () => { ref.resolve(); resolve(null); };
+      });
+      if (!split) return;
+    }
     try {
       const payload = { items: cart.payload(), payment_method: pay };
       if (cart.finalAmount != null) payload.final_amount = cart.finalAmount;
       if (cart.manual.length) payload.manual_items = cart.manualPayload();
+      if (split) payload.payment_split = split;
       const bill = await api.post("/api/bills/complete", payload);
       cart.clear();
       refreshBill();
@@ -1554,6 +1591,13 @@
           </div>
           ${r.top_products.length ? `<div class="card"><div class="rep-h">Top Products</div>
             ${r.top_products.map((p) => `<div class="rep-row"><span>${p.name}</span><span>${p.qty} \u00B7 ${money(p.revenue)}</span></div>`).join("")}</div>` : ""}
+          <div class="card"><div class="rep-h">Payment Summary</div>
+            <div class="rep-row"><span>\uD83D\uDCB5 Cash</span><span>${money((r.payment && r.payment.cash) || 0)}</span></div>
+            <div class="rep-row"><span>\uD83D\uDCF1 UPI</span><span>${money((r.payment && r.payment.upi) || 0)}</span></div>
+            <div class="rep-row"><span>\uD83D\uDCB3 Card</span><span>${money((r.payment && r.payment.card) || 0)}</span></div>
+            <div class="rep-row"><span><b>Online (UPI+Card)</b></span><span><b>${money(r.online_sales || 0)}</b></span></div>
+            <div class="rep-row"><span><b>Cash</b></span><span><b>${money(r.cash_sales || 0)}</b></span></div>
+          </div>
           ${r.bills.length ? `<div class="card"><div class="rep-h">Bills (${r.bills.length})</div>
             ${r.bills.map((b) => `<div class="rep-row"><span>${b.bill_number} \u00B7 ${b.time}</span><span>${b.items} items \u00B7 ${money(b.amount)}</span></div>`).join("")}</div>` : `<div class="empty">No bills in this period.</div>`}`;
       } catch (e) { out.innerHTML = `<div class="msg">${e.message}</div>`; }
@@ -1997,17 +2041,27 @@
     view.appendChild(s);
     const b = await api.get("/api/bills/" + params.id);
     s.appendChild(el(`<div class="card"><div class="name">${b.bill_number}</div>
-      <div class="meta">${new Date(b.bill_date).toLocaleString()}</div></div>`));
+      <div class="meta">${b.date_ist || ""} ${b.time_ist || ""}</div></div>`));
     b.items.forEach((it) =>
       s.appendChild(
         el(`<div class="cart-line"><div>${it.product_name}<div class="meta">${money(it.unit_price)} \u00D7 ${it.quantity}</div></div>
           <div></div><div class="price">${money(it.total_price)}</div></div>`)
       )
     );
+    // Payment section (split breakdown if present).
+    let payHtml = `<div class="setting-row" style="border:none"><span class="k">Payment</span><span class="v">${(b.payment_method || "cash").toUpperCase()}</span></div>`;
+    if (b.payment_method === "split" && b.payment_breakdown) {
+      payHtml = `<div class="setting-row"><span class="k">Payment</span><span class="v">SPLIT</span></div>`;
+      ["cash", "upi", "card"].forEach((k) => {
+        const v = b.payment_breakdown[k] || 0;
+        if (v > 0) payHtml += `<div class="setting-row"><span class="k">${k.toUpperCase()}</span><span class="v">${money(v)}</span></div>`;
+      });
+    }
     s.appendChild(el(`<div class="card" style="margin-top:14px">
       <div class="setting-row"><span class="k">Subtotal</span><span class="v">${money(b.subtotal)}</span></div>
       <div class="setting-row"><span class="k">Discount</span><span class="v">\u2212${money(b.total_discount)}</span></div>
-      <div class="setting-row" style="border:none"><span class="k">Grand total</span><span class="price">${money(b.grand_total)}</span></div>
+      <div class="setting-row"><span class="k">Grand total</span><span class="price">${money(b.grand_total)}</span></div>
+      ${payHtml}
     </div>`));
   });
 

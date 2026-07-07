@@ -729,11 +729,28 @@ table { border-collapse: collapse; width: 100%; }
   #view:has(.scan-screen), #view.scan-active { height: 100dvh; max-height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
   #view:has(.scan-screen) > .topbar, #view.scan-active > .topbar { flex: 0 0 auto; }
   #view:has(.scan-screen) > .scan-screen, #view.scan-active > .scan-screen { flex: 1 1 auto; min-height: 0; height: auto; overflow: hidden; display: flex; flex-direction: column; }
-  .bc-wrap { flex: 0 0 auto; max-height: 46vh; }
-  .billpanel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-  .billpanel .bill-list { flex: 1 1 auto; min-height: 60px; overflow-y: auto; }
-  .billpanel .billbar { flex: 0 0 auto; position: sticky; bottom: 0; background: #fff;
-    border-top: 1px solid var(--border); padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  /* Mobile scan: let the WHOLE screen scroll naturally so every product is
+     visible as you scroll — no cramped inner scroll box. Footer stays sticky. */
+  #view:has(.scan-screen), #view.scan-active { height: auto; min-height: 100dvh; display: block; overflow: visible; }
+  #view:has(.scan-screen) > .scan-screen, #view.scan-active > .scan-screen { display: block; height: auto; overflow: visible; }
+  .bc-wrap { max-height: none; }
+  /* Camera off (default): keep the top compact. */
+  .scan-screen:not(.cam-on) #bc-reader { display: none; height: 0; min-height: 0; }
+  .scan-screen:not(.cam-on) .scan-flash,
+  .scan-screen:not(.cam-on) .bc-hint { display: none; }
+  .scan-screen:not(.cam-on) .scan-status { padding: 2px 0; font-size: 12px; }
+  .scan-screen.cam-on #bc-reader { max-height: 150px; }
+  .scan-screen.cam-on .bc-reader { min-height: 120px; max-height: 150px; }
+  #bc-reader video { max-height: 150px !important; object-fit: cover; }
+  .billpanel { display: block; }
+  .billpanel-head { padding: 10px 12px; font-size: 15px; }
+  /* The list grows with its content; the page scrolls, not the list. */
+  .billpanel .bill-list { display: block !important; max-height: none; overflow: visible; }
+  .bill-line { padding: 12px 4px; border-bottom: 1px solid var(--border); }
+  /* Footer sticks to the bottom of the viewport while the page scrolls. */
+  .billpanel .billbar { position: sticky; bottom: 0; background: #fff; z-index: 20;
+    border-top: 1px solid var(--border); padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    box-shadow: 0 -4px 12px rgba(0,0,0,.06); }
 }
 
 /* ---------- Reports ---------- */

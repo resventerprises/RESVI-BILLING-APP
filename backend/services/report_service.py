@@ -20,6 +20,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database.crud import repositories as repo
+from backend.services.timezone_util import ist_date_str, ist_time_str, ist_now_str
 from database.models import Bill, BillItem, Product
 
 BRAND = colors.HexColor("#0f766e")
@@ -74,7 +75,20 @@ def _aggregate(session: Session, start: datetime, end: datetime, *,
 
     pay = defaultdict(float)
     for b in bills:
-        pay[(b.payment_method or "cash").lower()] += b.grand_total or 0
+        method = (b.payment_method or "cash").lower()
+        if method == "split" and getattr(b, "payment_breakdown", None):
+            import json as _json
+            try:
+                parts = _json.loads(b.payment_breakdown)
+                for k in ("cash", "upi", "card"):
+                    pay[k] += float(parts.get(k, 0) or 0)
+            except (ValueError, TypeError):
+                pay["cash"] += b.grand_total or 0
+        else:
+            pay[method] += b.grand_total or 0
+    # Cash vs online split for the end-of-day summary.
+    cash_sales = round(pay.get("cash", 0), 2)
+    online_sales = round(pay.get("upi", 0) + pay.get("card", 0), 2)
 
     # Product-wise totals (qty + revenue) across the kept bills.
     prod_qty: dict[str, int] = defaultdict(int)
@@ -102,6 +116,7 @@ def _aggregate(session: Session, start: datetime, end: datetime, *,
         "total_bills": total_bills, "total_items": total_items,
         "gross": gross, "discount": discount, "net": net,
         "pay": pay, "top_products": top_products, "daily": daily,
+        "cash_sales": cash_sales, "online_sales": online_sales,
     }
 
 
@@ -144,7 +159,7 @@ def build_report_pdf(data: dict, *, report_type: str, period_label: str,
         Paragraph("RESVI ENTERPRISES", S["brand"]),
         Paragraph(report_type, S["sub"]),
         Paragraph(f"{period_label} &nbsp;&nbsp;|&nbsp;&nbsp; Generated: "
-                  f"{datetime.now().strftime('%d-%m-%Y %I:%M %p')}", S["small"]),
+                  f"{ist_now_str()}", S["small"]),
         Spacer(1, 8),
         Paragraph("Summary", S["sec"]),
     ]
@@ -187,8 +202,8 @@ def build_report_pdf(data: dict, *, report_type: str, period_label: str,
         for b in data["bills"]:
             rows.append([
                 b.bill_number,
-                b.bill_date.strftime("%d-%m-%Y") if b.bill_date else "-",
-                b.bill_date.strftime("%I:%M %p") if b.bill_date else "-",
+                ist_date_str(b.bill_date),
+                ist_time_str(b.bill_date),
                 str(b.total_items or 0),
                 _rupees(b.grand_total),
             ])
@@ -201,6 +216,9 @@ def build_report_pdf(data: dict, *, report_type: str, period_label: str,
     prows = [["Method", "Amount"]]
     for m in ("cash", "upi", "card"):
         prows.append([m.upper(), _rupees(data["pay"].get(m, 0))])
+    prows.append(["ONLINE (UPI + Card)", _rupees(data.get("online_sales", 0))])
+    prows.append(["CASH", _rupees(data.get("cash_sales", 0))])
+    prows.append(["TOTAL", _rupees(data["net"])])
     story.append(_header_table(prows, [70 * mm, 100 * mm], {1: "RIGHT"}))
 
     story.append(Spacer(1, 18))
@@ -236,8 +254,8 @@ def build_report_excel(data: dict, *, report_type: str, period_label: str) -> by
     for b in data["bills"]:
         wb_bills.append([
             b.bill_number,
-            b.bill_date.strftime("%d-%m-%Y") if b.bill_date else "",
-            b.bill_date.strftime("%I:%M %p") if b.bill_date else "",
+            ist_date_str(b.bill_date),
+            ist_time_str(b.bill_date),
             b.total_items or 0, round(b.grand_total or 0, 2),
         ])
 

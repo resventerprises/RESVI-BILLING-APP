@@ -25,7 +25,8 @@ def _line_total(unit_price: float, discount: float, quantity: int) -> float:
 
 def complete_bill(session: Session, cart_items: list[dict], payment_method: str = "cash",
                   final_amount: float | None = None,
-                  manual_items: list[dict] | None = None) -> Bill:
+                  manual_items: list[dict] | None = None,
+                  payment_split: dict | None = None) -> Bill:
     """cart_items: [{"product_id": int, "quantity": int}, ...]
 
     manual_items: [{"name": str, "price": float, "quantity": int}, ...] — one-off
@@ -34,11 +35,14 @@ def complete_bill(session: Session, cart_items: list[dict], payment_method: str 
     final_amount: optional manual override (bargain). When given, the bill's
     grand total becomes this amount and the difference from subtotal is recorded
     as discount. Product prices are never changed.
+
+    payment_split: {"cash": n, "upi": n, "card": n} — when given, method is SPLIT
+    and the parts must sum to the grand total.
     """
     if not cart_items and not manual_items:
         raise ValidationError("Cannot complete an empty bill.")
     payment_method = (payment_method or "cash").lower()
-    if payment_method not in {"cash", "upi", "card"}:
+    if payment_method not in {"cash", "upi", "card", "split"}:
         payment_method = "cash"
 
     # Merge duplicate product rows defensively (Bottle x3, not three rows).
@@ -132,6 +136,26 @@ def complete_bill(session: Session, cart_items: list[dict], payment_method: str 
         total_discount = round(subtotal - final_amount, 2)
         grand_total = final_amount
 
+    # Split payment: validate the parts sum to the grand total, store breakdown.
+    breakdown_json = None
+    if payment_method == "split" or payment_split:
+        import json as _json
+        split = payment_split or {}
+        try:
+            parts = {k: round(float(split.get(k, 0) or 0), 2) for k in ("cash", "upi", "card")}
+        except (TypeError, ValueError):
+            raise ValidationError("Split amounts must be numbers.")
+        if any(v < 0 for v in parts.values()):
+            raise ValidationError("Split amounts cannot be negative.")
+        paid = round(sum(parts.values()), 2)
+        if paid != round(grand_total, 2):
+            raise ValidationError(
+                f"Payment total does not match bill amount. "
+                f"Entered Rs.{paid:.2f}, bill is Rs.{grand_total:.2f}."
+            )
+        payment_method = "split"
+        breakdown_json = _json.dumps(parts)
+
     repo.bills.update(
         session,
         bill,
@@ -139,6 +163,8 @@ def complete_bill(session: Session, cart_items: list[dict], payment_method: str 
         subtotal=round(subtotal, 2),
         total_discount=round(total_discount, 2),
         grand_total=grand_total,
+        payment_method=payment_method,
+        payment_breakdown=breakdown_json,
     )
 
     _roll_daily(session, bill)
@@ -150,7 +176,8 @@ def complete_bill(session: Session, cart_items: list[dict], payment_method: str 
 
 
 def _roll_daily(session: Session, bill: Bill) -> None:
-    key = bill.bill_date.astimezone(timezone.utc).strftime("%Y-%m-%d")
+    from backend.services.timezone_util import ist_date_key
+    key = ist_date_key(bill.bill_date)
     summary = repo.daily_sales.get(session, key)
     if summary is None:
         summary = DailySale(sale_date=key)
@@ -165,7 +192,8 @@ def _roll_daily(session: Session, bill: Bill) -> None:
 def unroll_daily(session: Session, bill: Bill) -> None:
     """Reverse a bill's contribution to the DailySale aggregate (on deletion).
     Removes the daily row entirely once it reaches zero bills."""
-    key = bill.bill_date.astimezone(timezone.utc).strftime("%Y-%m-%d")
+    from backend.services.timezone_util import ist_date_key
+    key = ist_date_key(bill.bill_date)
     summary = repo.daily_sales.get(session, key)
     if summary is None:
         return
@@ -178,15 +206,27 @@ def unroll_daily(session: Session, bill: Bill) -> None:
 
 
 def serialize_bill(bill: Bill, session: Session, with_items: bool = False) -> dict:
+    import json as _json
+
+    from backend.services.timezone_util import ist_date_str, ist_time_str
+    breakdown = None
+    if getattr(bill, "payment_breakdown", None):
+        try:
+            breakdown = _json.loads(bill.payment_breakdown)
+        except (ValueError, TypeError):
+            breakdown = None
     data = {
         "id": bill.id,
         "bill_number": bill.bill_number,
         "bill_date": bill.bill_date.isoformat(),
+        "date_ist": ist_date_str(bill.bill_date),
+        "time_ist": ist_time_str(bill.bill_date),
         "total_items": bill.total_items,
         "subtotal": bill.subtotal,
         "total_discount": bill.total_discount,
         "grand_total": bill.grand_total,
         "payment_method": getattr(bill, "payment_method", "cash"),
+        "payment_breakdown": breakdown,
     }
     if with_items:
         data["items"] = [

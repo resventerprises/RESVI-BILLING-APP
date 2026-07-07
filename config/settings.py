@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.5.0-bill-priority"  # bigger bill area, smaller scanner, editable mobile lines
+APP_VERSION: str = "1.6.0-ist-split-pay"  # IST times everywhere, split payment, cash/online summary
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

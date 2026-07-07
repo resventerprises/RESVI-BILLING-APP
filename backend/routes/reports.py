@@ -8,6 +8,7 @@ from datetime import date, datetime
 from flask import Blueprint, current_app, request, send_file
 
 from database.db import session_scope
+from backend.services.timezone_util import ist_date_str, ist_time_str
 from utils.responses import error, ok
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/api/reports")
@@ -82,12 +83,13 @@ def view_report():
             "gross": round(data["gross"], 2), "discount": round(data["discount"], 2),
             "net": round(data["net"], 2),
             "payment": {k: round(v, 2) for k, v in data["pay"].items()},
+            "cash_sales": data.get("cash_sales", 0), "online_sales": data.get("online_sales", 0),
             "top_products": [{"name": n, "qty": q, "revenue": round(r, 2)}
                              for n, q, r in data["top_products"][:10]],
             "daily": [{"date": d.strftime("%d %b"), "amount": round(v, 2)} for d, v in data["daily"]],
             "bills": [{"bill_number": b.bill_number,
-                       "date": b.bill_date.strftime("%d-%m-%Y") if b.bill_date else "",
-                       "time": b.bill_date.strftime("%I:%M %p") if b.bill_date else "",
+                       "date": ist_date_str(b.bill_date),
+                       "time": ist_time_str(b.bill_date),
                        "items": b.total_items or 0, "amount": round(b.grand_total or 0, 2)}
                       for b in data["bills"]],
         })
