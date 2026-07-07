@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.4.0-sales-delete-count"  # daily-sales delete (aggregate-safe), product count/stats
+APP_VERSION: str = "1.4.1-sync-tablet-fix"  # tz-safe sales delete, tablet sidebar toggle
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

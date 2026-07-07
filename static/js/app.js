@@ -136,6 +136,10 @@
     const map = { product: "products", bill: "history" };
     const act = map[active] || active;
     sb.innerHTML = "";
+    // Tablet expand/collapse toggle (hidden on mobile drawer + desktop via CSS).
+    const toggle = el(`<button class="rail-toggle" title="Expand / collapse menu" aria-label="Toggle menu">\u2630</button>`);
+    toggle.onclick = () => document.getElementById("app")?.classList.toggle("rail-expanded");
+    sb.appendChild(toggle);
     const logo = el(`<button class="side-logo">
       <img src="/static/img/logo.png" alt="RESVI"/>
       <span class="side-tag">Retail Products Store</span></button>`);

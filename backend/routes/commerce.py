@@ -89,6 +89,7 @@ def delete_daily(sale_date: str):
     from datetime import datetime
 
     from backend.services import bill_delete_service
+    from database.models import DailySale
 
     try:
         d = datetime.strptime(sale_date, "%Y-%m-%d").date()
@@ -96,6 +97,11 @@ def delete_daily(sale_date: str):
         return error("validation_error", "date must be YYYY-MM-DD.")
     with session_scope() as s:
         n = bill_delete_service.delete_by_date(s, d)
+        # Safety net: ensure the aggregate row for this exact key is gone even
+        # if no bills matched (e.g. an orphaned row from earlier bugs).
+        row = s.query(DailySale).filter(DailySale.sale_date == sale_date).first()
+        if row is not None:
+            s.delete(row)
     return ok({"deleted_bills": n, "message": f"Cleared sales for {d.strftime('%d-%m-%Y')}"})
 
 

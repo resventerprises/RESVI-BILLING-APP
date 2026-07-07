@@ -609,17 +609,34 @@ table { border-collapse: collapse; width: 100%; }
 @media (min-width: 768px) and (max-width: 1024px) {
   #app { grid-template-columns: 72px 1fr; }
   .sidebar { padding: 12px 8px; align-items: center; }
+  .rail-toggle { display: flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px; border: none; background: transparent; color: #c2cfcc;
+    font-size: 22px; cursor: pointer; border-radius: 10px; margin-bottom: 6px; }
+  .rail-toggle:active { background: rgba(255,255,255,.08); }
   .side-logo { padding: 6px 0 12px; align-items: center; }
   .side-logo .side-tag { display: none; }
   .side-logo img { height: 34px; }
   .side-item { justify-content: center; padding: 14px 0; min-height: 48px; }
-  .side-item .si-label { display: none; }         /* icons only */
+  .side-item .si-label { display: none; }         /* icons only when collapsed */
   .side-item .si-ico { font-size: 20px; width: auto; }
   .side-item.active { background: var(--primary); }
-  /* Bigger scanner + wider bill on tablets. */
   .scan-screen { grid-template-columns: 1fr minmax(320px, 400px); }
   .btn { min-height: 48px; }
+
+  /* Expanded state on tablet: widen the rail and show labels (like desktop). */
+  #app.rail-expanded { grid-template-columns: 220px 1fr; }
+  #app.rail-expanded .sidebar { align-items: stretch; padding: 12px; }
+  #app.rail-expanded .side-logo { flex-direction: column; align-items: flex-start; }
+  #app.rail-expanded .side-logo .side-tag { display: block; }
+  #app.rail-expanded .side-item { justify-content: flex-start; padding: 12px 14px; gap: 12px; }
+  #app.rail-expanded .side-item .si-label { display: inline; }
 }
+
+/* Toggle is tablet-only: hide on mobile (drawer) and desktop (full sidebar). */
+.rail-toggle { display: none; }
+@media (min-width: 768px) and (max-width: 1024px) { .sidebar .rail-toggle { display: flex; } }
+@media (max-width: 767px) { .rail-toggle { display: none !important; } }
+@media (min-width: 1025px) { .rail-toggle { display: none !important; } }
 
 /* Buttons: consistent minimum height everywhere. */
 .btn { min-height: 44px; }

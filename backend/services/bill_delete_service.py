@@ -37,19 +37,39 @@ def delete_bill(session: Session, bill_id: int) -> bool:
     return True
 
 
+def _bills_on_utc_date(session: Session, d_from: date, d_to: date) -> list[Bill]:
+    """Return bills whose UTC calendar date falls in [d_from, d_to].
+
+    The DailySale aggregate keys bills by their UTC date (bill_date in UTC), so
+    deletion must use the SAME basis, or aggregate rows would be left stale and
+    'reappear' after refresh. We over-select by a day on each side (to cover any
+    timezone offset) and then filter precisely on the UTC date string.
+    """
+    from datetime import timedelta, timezone
+
+    start = datetime.combine(d_from - timedelta(days=1), time.min)
+    end = datetime.combine(d_to + timedelta(days=1), time.max)
+    candidates = session.query(Bill).filter(Bill.bill_date >= start, Bill.bill_date <= end).all()
+    out = []
+    for b in candidates:
+        bd = b.bill_date
+        if bd.tzinfo is not None:
+            bd = bd.astimezone(timezone.utc)
+        bdate = bd.date()
+        if d_from <= bdate <= d_to:
+            out.append(b)
+    return out
+
+
 def delete_by_date(session: Session, d: date) -> int:
-    start = datetime.combine(d, time.min)
-    end = datetime.combine(d, time.max)
-    bills = session.query(Bill).filter(Bill.bill_date >= start, Bill.bill_date <= end).all()
+    bills = _bills_on_utc_date(session, d, d)
     for b in bills:
         _restore_stock_and_delete(session, b)
     return len(bills)
 
 
 def delete_by_range(session: Session, d_from: date, d_to: date) -> int:
-    start = datetime.combine(d_from, time.min)
-    end = datetime.combine(d_to, time.max)
-    bills = session.query(Bill).filter(Bill.bill_date >= start, Bill.bill_date <= end).all()
+    bills = _bills_on_utc_date(session, d_from, d_to)
     for b in bills:
         _restore_stock_and_delete(session, b)
     return len(bills)
