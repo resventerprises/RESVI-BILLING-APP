@@ -2076,10 +2076,10 @@
     const bills = await api.get("/api/bills");
     if (!bills.length) { s.appendChild(emptyBlock("\uD83E\uDDFE", "No bills yet.")); return; }
     bills.forEach((b) => {
-      const d = new Date(b.bill_date);
+      const when = (b.date_ist || "") + " " + (b.time_ist || "");
       const row = el(`<div class="card product-card" style="grid-template-columns:1fr auto auto;gap:10px;align-items:center">
         <div class="bill-open" style="cursor:pointer"><div class="name">${b.bill_number}</div>
-          <div class="meta">${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} \u00B7 ${b.total_items} items</div></div>
+          <div class="meta">${when} \u00B7 ${b.total_items} items</div></div>
         <div class="price">${money(b.grand_total)}</div>
         <button class="btn ghost sm bill-del" title="Delete bill" style="width:auto">\uD83D\uDDD1</button></div>`);
       row.querySelector(".bill-open").onclick = () => go("bill", { id: b.id });

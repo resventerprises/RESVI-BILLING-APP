@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.7.0-dynamic-discount"  # percentage/fixed discount system
+APP_VERSION: str = "1.7.1-history-ist"  # bill history list now uses IST (matches reports/PDF)
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 
