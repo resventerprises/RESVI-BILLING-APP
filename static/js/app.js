@@ -86,6 +86,17 @@
       this.manual.push({ name, price, qty });
       this.finalAmount = null;
     },
+    setDiscount(type, value) {
+      this.discountType = type; this.discountValue = value; this.finalAmount = null;
+    },
+    discountAmount() {
+      if (!this.discountType || !this.discountValue) return 0;
+      const sub = this.total();
+      const amt = this.discountType === "percent"
+        ? Math.round(sub * this.discountValue) / 100
+        : this.discountValue;
+      return Math.min(Math.max(0, amt), sub);
+    },
     undoLast() {
       if (!this.lines.length) return;
       const last = this.lines[this.lines.length - 1];
@@ -103,6 +114,7 @@
       this.manual = [];
       this.lastProductId = null;
       this.finalAmount = null; // manual bargain override
+      this.discountType = null; this.discountValue = 0;
     },
     count() {
       return this.lines.reduce((s, l) => s + l.qty, 0)
@@ -113,7 +125,8 @@
         + this.manual.reduce((s, m) => s + m.price * m.qty, 0);
     },
     finalTotal() {
-      return this.finalAmount != null ? this.finalAmount : this.total();
+      if (this.finalAmount != null) return this.finalAmount;
+      return Math.max(0, this.total() - this.discountAmount());
     },
     payload() {
       return this.lines.map((l) => ({ product_id: l.product_id, quantity: l.qty }));
@@ -418,6 +431,7 @@
             <div class="bt-row bt-disc-row" hidden><span>Discount</span><span class="bt-disc"></span></div>
             <div class="bt-row bt-final"><span>Final Amount</span><span class="bt-total"></span></div>
           </div>
+          <button class="btn ghost sm add-discount" style="width:auto">\uD83C\uDFF7\uFE0F Discount</button>
           <button class="btn ghost sm edit-final" style="width:auto">\u270F\uFE0F Edit Final Amount</button>
           <div class="actions">
             <button class="btn ghost add-manual">\u2795 Add Manual Item</button>
@@ -504,6 +518,52 @@
       const qty = parseInt(qtyStr, 10);
       if (isNaN(qty) || qty < 1) { alert("Enter a valid quantity."); return; }
       cart.addManual(name.trim(), Math.round(price * 100) / 100, qty);
+      refreshBill();
+    };
+    // Dynamic discount: percentage or fixed amount.
+    scr.querySelector(".add-discount").onclick = async () => {
+      if (!cart.count()) { alert("Add items to the bill first."); return; }
+      const sub = cart.total();
+      const chosen = await new Promise((resolve) => {
+        const m = el(`<div class="modal"><h3>Discount</h3>
+          <div class="sub">Subtotal: ${money(sub)}</div>
+          <div class="disc-type" style="display:flex;gap:8px;margin:10px 0">
+            <button class="btn ghost dt-opt active" data-t="percent">Percentage (%)</button>
+            <button class="btn ghost dt-opt" data-t="fixed">Fixed (\u20B9)</button>
+          </div>
+          <div class="field"><label>Discount value</label><input class="input dv" type="number" inputmode="decimal" value="0"/></div>
+          <div class="disc-preview" style="font-weight:700;margin:6px 0"></div>
+          <button class="btn primary dc-ok">Apply Discount</button>
+          <button class="btn ghost dc-clear" style="margin-top:8px">Remove discount</button>
+          <button class="btn ghost dc-cancel" style="margin-top:8px">Cancel</button></div>`);
+        const ref = modal(m);
+        let type = cart.discountType || "percent";
+        const setActive = () => m.querySelectorAll(".dt-opt").forEach((b) => b.classList.toggle("active", b.dataset.t === type));
+        if (cart.discountValue) m.querySelector(".dv").value = cart.discountValue;
+        setActive();
+        const preview = m.querySelector(".disc-preview");
+        const calc = () => {
+          const v = parseFloat(m.querySelector(".dv").value) || 0;
+          const amt = type === "percent" ? Math.round(sub * v) / 100 : v;
+          const capped = Math.min(Math.max(0, amt), sub);
+          preview.textContent = `Discount ${money(capped)} \u2192 Final ${money(sub - capped)}`;
+          preview.style.color = amt > sub ? "#b91c1c" : "#15803d";
+          if (amt > sub) preview.textContent = "Discount cannot exceed bill amount.";
+        };
+        m.querySelectorAll(".dt-opt").forEach((b) => (b.onclick = () => { type = b.dataset.t; setActive(); calc(); }));
+        m.querySelector(".dv").oninput = calc; calc();
+        m.querySelector(".dc-ok").onclick = () => {
+          const v = parseFloat(m.querySelector(".dv").value) || 0;
+          const amt = type === "percent" ? Math.round(sub * v) / 100 : v;
+          if (amt > sub) { alert("Discount cannot exceed bill amount."); return; }
+          if (type === "percent" && v > 100) { alert("Percentage cannot exceed 100%."); return; }
+          ref.resolve(); resolve({ type, value: v });
+        };
+        m.querySelector(".dc-clear").onclick = () => { ref.resolve(); resolve({ type: null, value: 0 }); };
+        m.querySelector(".dc-cancel").onclick = () => { ref.resolve(); resolve(undefined); };
+      });
+      if (chosen === undefined) return;
+      cart.setDiscount(chosen.type, chosen.value);
       refreshBill();
     };
 
@@ -1271,6 +1331,7 @@
     try {
       const payload = { items: cart.payload(), payment_method: pay };
       if (cart.finalAmount != null) payload.final_amount = cart.finalAmount;
+      if (cart.discountType && cart.discountValue) { payload.discount_type = cart.discountType; payload.discount_value = cart.discountValue; }
       if (cart.manual.length) payload.manual_items = cart.manualPayload();
       if (split) payload.payment_split = split;
       const bill = await api.post("/api/bills/complete", payload);

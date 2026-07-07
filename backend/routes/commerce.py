@@ -40,9 +40,11 @@ def complete():
     final_amount = body.get("final_amount", None)
     manual_items = body.get("manual_items", None)
     payment_split = body.get("payment_split", None)
+    discount_type = body.get("discount_type", None)
+    discount_value = body.get("discount_value", None)
     try:
         with session_scope() as s:
-            bill = billing_service.complete_bill(s, items, payment_method, final_amount=final_amount, manual_items=manual_items, payment_split=payment_split)
+            bill = billing_service.complete_bill(s, items, payment_method, final_amount=final_amount, manual_items=manual_items, payment_split=payment_split, discount_type=discount_type, discount_value=discount_value)
             return ok(billing_service.serialize_bill(bill, s, with_items=True), status=201)
     except ValidationError as exc:
         return error("validation_error", str(exc))

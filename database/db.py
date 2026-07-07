@@ -85,6 +85,8 @@ def _ensure_columns() -> None:
         "bills": [
             ("payment_method", "VARCHAR(16) NOT NULL DEFAULT 'cash'"),
             ("payment_breakdown", "TEXT"),
+            ("discount_type", "VARCHAR(12)"),
+            ("discount_value", "FLOAT NOT NULL DEFAULT 0"),
         ],
         "bill_items": [
             ("item_name", "VARCHAR(200)"),

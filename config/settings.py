@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.6.0-ist-split-pay"  # IST times everywhere, split payment, cash/online summary
+APP_VERSION: str = "1.7.0-dynamic-discount"  # percentage/fixed discount system
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

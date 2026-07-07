@@ -783,3 +783,7 @@ table { border-collapse: collapse; width: 100%; }
 /* ---------- Product count ---------- */
 .prod-count { font-size: 14px; }
 .prod-count b { font-size: 16px; color: #111827; }
+
+/* Discount type toggle */
+.dt-opt { flex: 1; min-height: 44px; }
+.dt-opt.active { background: var(--primary); color: #fff; border-color: var(--primary); }

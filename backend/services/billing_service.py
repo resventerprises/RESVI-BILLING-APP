@@ -26,7 +26,9 @@ def _line_total(unit_price: float, discount: float, quantity: int) -> float:
 def complete_bill(session: Session, cart_items: list[dict], payment_method: str = "cash",
                   final_amount: float | None = None,
                   manual_items: list[dict] | None = None,
-                  payment_split: dict | None = None) -> Bill:
+                  payment_split: dict | None = None,
+                  discount_type: str | None = None,
+                  discount_value: float | None = None) -> Bill:
     """cart_items: [{"product_id": int, "quantity": int}, ...]
 
     manual_items: [{"name": str, "price": float, "quantity": int}, ...] — one-off
@@ -123,6 +125,31 @@ def complete_bill(session: Session, cart_items: list[dict], payment_method: str 
 
     grand_total = round(subtotal - total_discount, 2)
 
+    # Dynamic discount: percentage or fixed amount applied to the subtotal.
+    disc_type_stored = None
+    disc_value_stored = 0.0
+    if discount_type and discount_value is not None:
+        try:
+            dv = round(float(discount_value), 2)
+        except (TypeError, ValueError):
+            raise ValidationError("Discount value must be a number.")
+        if dv < 0:
+            raise ValidationError("Discount cannot be negative.")
+        dtype = str(discount_type).lower()
+        if dtype in ("percent", "percentage", "%"):
+            if dv > 100:
+                raise ValidationError("Percentage discount cannot exceed 100%.")
+            disc_amount = round(subtotal * dv / 100, 2)
+            disc_type_stored = "percent"
+        else:
+            disc_amount = dv
+            disc_type_stored = "fixed"
+        if disc_amount > round(subtotal, 2):
+            raise ValidationError("Discount cannot exceed bill amount.")
+        disc_value_stored = dv
+        total_discount = round(total_discount + disc_amount, 2)
+        grand_total = round(subtotal - total_discount, 2)
+
     # Manual final-amount (bargain): override grand total, book the rest as discount.
     if final_amount is not None:
         try:
@@ -162,6 +189,8 @@ def complete_bill(session: Session, cart_items: list[dict], payment_method: str 
         total_items=total_items,
         subtotal=round(subtotal, 2),
         total_discount=round(total_discount, 2),
+        discount_type=disc_type_stored,
+        discount_value=disc_value_stored,
         grand_total=grand_total,
         payment_method=payment_method,
         payment_breakdown=breakdown_json,

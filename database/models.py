@@ -170,6 +170,8 @@ class Bill(Base):
     total_items: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     subtotal: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     total_discount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    discount_type: Mapped[str | None] = mapped_column(String(12), nullable=True)  # 'percent'|'fixed'
+    discount_value: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     grand_total: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     payment_method: Mapped[str] = mapped_column(String(16), default="cash", nullable=False)
     payment_breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON for SPLIT
