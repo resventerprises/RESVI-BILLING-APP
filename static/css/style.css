@@ -281,13 +281,17 @@ img { display: block; }
   .searchbar { position: static; padding: 0 0 18px; }
   .form-narrow { max-width: 560px; }
 
-  /* Scan: full-height POS — camera left, live bill right. */
-  .scan-screen { display: grid; grid-template-columns: 1fr minmax(360px, 440px); }
-  .scan-wrap { height: 100%; min-height: 0; }
+  /* Scan: full-height POS — camera left, live bill right. Bill is prioritised. */
+  .scan-screen { display: grid; grid-template-columns: 1fr 1fr; }
+  .scan-wrap { min-height: 0; align-self: start; }
+  /* Scanner preview capped so it never dominates; placeholder when idle. */
+  .bc-reader { min-height: 60px; }
+  .scan-screen.cam-on .bc-reader { min-height: 180px; max-height: 220px; }
+  #bc-reader video { max-height: 220px !important; object-fit: cover; }
   .guide { top: 50%; }
-  .billpanel { border-left: 1px solid var(--border); }
+  .billpanel { border-left: 1px solid var(--border); min-width: 420px; }
   .billpanel-head { display: block; padding: 18px 20px; font-weight: 700; font-size: 18px; border-bottom: 1px solid var(--border); }
-  .bill-list { display: block; flex: 1; overflow-y: auto; padding: 8px 20px; }
+  .bill-list { display: block; flex: 1; overflow-y: auto; padding: 8px 20px; min-height: 350px; max-height: 460px; }
   .bill-line { padding: 14px 0; }
   .bl-name { font-size: 16px; }
   .billbar { padding: 16px 20px 20px; }
@@ -692,10 +696,13 @@ table { border-collapse: collapse; width: 100%; }
 @media (max-width: 767px) {
   .scan-screen { display: flex; flex-direction: column; }
   .bc-wrap { min-height: 0; }                 /* no forced tall camera block */
-  .scan-screen.cam-on #bc-reader { max-height: 180px; }
-  .scan-screen.cam-on .bc-reader { min-height: 150px; max-height: 180px; }
-  #bc-reader video { max-height: 180px !important; object-fit: cover; }
+  .scan-screen.cam-on #bc-reader { max-height: 150px; }
+  .scan-screen.cam-on .bc-reader { min-height: 120px; max-height: 150px; }
+  #bc-reader video { max-height: 150px !important; object-fit: cover; }
   .billpanel { width: 100%; }
+  /* Bill list is always shown on the scan screen and fills available space so
+     at least 3 items are visible before scrolling. Each line stays editable. */
+  .scan-screen .bill-list { display: block !important; }
   .billbar { position: sticky; bottom: 0; background: #fff; }
 }
 
@@ -719,12 +726,12 @@ table { border-collapse: collapse; width: 100%; }
   /* On the scan screen, #view fills the viewport as a column: the topbar is
      fixed height, the scan-screen flexes to fill the rest. Only the bill list
      scrolls; the footer is always pinned and inside the viewport. */
-  #view:has(.scan-screen), #view.scan-active { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+  #view:has(.scan-screen), #view.scan-active { height: 100dvh; max-height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
   #view:has(.scan-screen) > .topbar, #view.scan-active > .topbar { flex: 0 0 auto; }
-  #view:has(.scan-screen) > .scan-screen, #view.scan-active > .scan-screen { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
-  .bc-wrap { flex: 0 0 auto; }
-  .billpanel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-  .billpanel .bill-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  #view:has(.scan-screen) > .scan-screen, #view.scan-active > .scan-screen { flex: 1 1 auto; min-height: 0; height: auto; overflow: hidden; display: flex; flex-direction: column; }
+  .bc-wrap { flex: 0 0 auto; max-height: 46vh; }
+  .billpanel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .billpanel .bill-list { flex: 1 1 auto; min-height: 60px; overflow-y: auto; }
   .billpanel .billbar { flex: 0 0 auto; position: sticky; bottom: 0; background: #fff;
     border-top: 1px solid var(--border); padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
 }

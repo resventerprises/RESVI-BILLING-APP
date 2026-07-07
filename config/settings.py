@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.4.1-sync-tablet-fix"  # tz-safe sales delete, tablet sidebar toggle
+APP_VERSION: str = "1.5.0-bill-priority"  # bigger bill area, smaller scanner, editable mobile lines
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 
