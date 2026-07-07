@@ -14,7 +14,10 @@ from database.models import Bill, BillItem
 
 
 def _restore_stock_and_delete(session: Session, bill: Bill) -> None:
-    """Add sold quantities back to stock, then delete the bill (items cascade)."""
+    """Add sold quantities back to stock, reverse the daily aggregate, then
+    delete the bill (items cascade)."""
+    from backend.services import billing_service
+
     for it in list(bill.items):
         if it.product_id is not None and it.quantity:
             # Put the sold units back; adjust() records a StockMovement.
@@ -22,6 +25,7 @@ def _restore_stock_and_delete(session: Session, bill: Bill) -> None:
                 session, it.product_id, it.quantity,
                 remarks=f"Reversal: deleted bill {bill.bill_number}",
             )
+    billing_service.unroll_daily(session, bill)  # keep DailySale aggregate correct
     session.delete(bill)  # BillItem has ondelete=CASCADE
 
 

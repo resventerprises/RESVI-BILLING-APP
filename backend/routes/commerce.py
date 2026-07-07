@@ -80,3 +80,29 @@ def daily():
     limit = request.args.get("limit", default=30, type=int)
     with session_scope() as s:
         return ok(sales_service.daily_sales(s, limit))
+
+
+@sales_bp.delete("/daily/<sale_date>")
+def delete_daily(sale_date: str):
+    """Delete a daily sales entry = delete that date's bills (stock restored,
+    reports/aggregates auto-update). Products/categories/imports untouched."""
+    from datetime import datetime
+
+    from backend.services import bill_delete_service
+
+    try:
+        d = datetime.strptime(sale_date, "%Y-%m-%d").date()
+    except ValueError:
+        return error("validation_error", "date must be YYYY-MM-DD.")
+    with session_scope() as s:
+        n = bill_delete_service.delete_by_date(s, d)
+    return ok({"deleted_bills": n, "message": f"Cleared sales for {d.strftime('%d-%m-%Y')}"})
+
+
+@sales_bp.post("/daily/clear-today")
+def clear_today_sales():
+    from backend.services import bill_delete_service
+
+    with session_scope() as s:
+        n = bill_delete_service.clear_today(s)
+    return ok({"deleted_bills": n, "message": f"Cleared today's sales ({n} bills)"})

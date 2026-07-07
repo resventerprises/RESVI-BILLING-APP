@@ -1248,9 +1248,11 @@
 
   // ---- Products -------------------------------------------------------------
   route("products", async () => {
-    view.appendChild(topbar("Products"));
+    const tb = topbar("Products");
+    view.appendChild(tb);
     const s = screen();
     const head = el(`<div class="searchbar">
+      <div class="prod-count muted" style="margin-bottom:8px">Loading count\u2026</div>
       <input class="input" type="text" inputmode="text" enterkeyhint="search" placeholder="\uD83D\uDD0D Search product / barcode / category"/>
       <div class="btn-row" style="margin-top:10px">
         <select class="input"><option value="">All categories</option></select>
@@ -1261,6 +1263,17 @@
     s.appendChild(head);
     s.appendChild(listWrap);
     view.appendChild(s);
+
+    // Product count + stats (auto-reflects imports, archives, deletes).
+    (async () => {
+      try {
+        const st = await api.get("/api/products/stats");
+        head.querySelector(".prod-count").innerHTML =
+          `<b>Products (${st.active})</b> \u00B7 ${st.archived} archived \u00B7 ${st.categories} categories`;
+        const h1 = tb.querySelector("h1");
+        if (h1) h1.textContent = `Products (${st.active})`;
+      } catch (_) {}
+    })();
 
     const search = head.querySelector('input');
     const catSel = head.querySelector("select");
@@ -2000,16 +2013,36 @@
     const s = screen();
     view.appendChild(s);
     const days = await api.get("/api/sales/daily");
-    if (!days.length) return s.appendChild(emptyBlock("\uD83D\uDCC8", "No sales recorded yet."));
-    days.forEach((d) =>
-      s.appendChild(
-        el(`<div class="card"><div class="name">${d.date}</div>
-          <div class="setting-row"><span class="k">Bills</span><span class="v">${d.num_bills}</span></div>
-          <div class="setting-row"><span class="k">Sales</span><span class="v">${money(d.total_sales)}</span></div>
-          <div class="setting-row"><span class="k">Discount</span><span class="v">\u2212${money(d.total_discount)}</span></div>
-          <div class="setting-row" style="border:none"><span class="k">Net</span><span class="price">${money(d.net_sales)}</span></div></div>`)
-      )
-    );
+
+    const clearBtn = el(`<button class="btn ghost sm" style="width:auto;margin-bottom:12px">\uD83D\uDDD1 Clear Today's Sales</button>`);
+    clearBtn.onclick = async () => {
+      if (!confirm("Delete all of today's sales entries? Stock will be restored. This cannot be undone.")) return;
+      try { const r = await api.post("/api/sales/daily/clear-today", {}); globalToast(r.message); go("daily"); }
+      catch (e) { alert(e.message); }
+    };
+    s.appendChild(clearBtn);
+
+    if (!days.length) { s.appendChild(emptyBlock("\uD83D\uDCC8", "No sales recorded yet.")); return; }
+    days.forEach((d) => {
+      const card = el(`<div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="name">${d.date}</div>
+          <button class="btn ghost sm ds-del" title="Delete this day" style="width:auto;color:#b91c1c">\uD83D\uDDD1</button>
+        </div>
+        <div class="setting-row"><span class="k">Bills</span><span class="v">${d.num_bills}</span></div>
+        <div class="setting-row"><span class="k">Sales</span><span class="v">${money(d.total_sales)}</span></div>
+        <div class="setting-row"><span class="k">Discount</span><span class="v">\u2212${money(d.total_discount)}</span></div>
+        <div class="setting-row" style="border:none"><span class="k">Net</span><span class="price">${money(d.net_sales)}</span></div></div>`);
+      card.querySelector(".ds-del").onclick = async () => {
+        if (!confirm(`Delete all sales entries for ${d.date}?\n\nThis action cannot be undone.`)) return;
+        try {
+          const r = await api.del("/api/sales/daily/" + d.date);
+          globalToast(r.message || "Sales cleared");
+          card.remove();
+        } catch (e) { alert(e.message); }
+      };
+      s.appendChild(card);
+    });
   });
 
   // ---- Settings -------------------------------------------------------------

@@ -738,3 +738,7 @@ table { border-collapse: collapse; width: 100%; }
 .bulk-del summary { cursor: pointer; font-weight: 600; }
 .bulk-del .field { margin-top: 6px; }
 .bill-del { color: #b91c1c; }
+
+/* ---------- Product count ---------- */
+.prod-count { font-size: 14px; }
+.prod-count b { font-size: 16px; color: #111827; }

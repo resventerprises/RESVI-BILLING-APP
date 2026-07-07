@@ -162,6 +162,21 @@ def _roll_daily(session: Session, bill: Bill) -> None:
     summary.net_sales += bill.grand_total
 
 
+def unroll_daily(session: Session, bill: Bill) -> None:
+    """Reverse a bill's contribution to the DailySale aggregate (on deletion).
+    Removes the daily row entirely once it reaches zero bills."""
+    key = bill.bill_date.astimezone(timezone.utc).strftime("%Y-%m-%d")
+    summary = repo.daily_sales.get(session, key)
+    if summary is None:
+        return
+    summary.num_bills = max(0, (summary.num_bills or 0) - 1)
+    summary.total_sales = round((summary.total_sales or 0) - (bill.subtotal or 0), 2)
+    summary.total_discount = round((summary.total_discount or 0) - (bill.total_discount or 0), 2)
+    summary.net_sales = round((summary.net_sales or 0) - (bill.grand_total or 0), 2)
+    if summary.num_bills <= 0:
+        session.delete(summary)
+
+
 def serialize_bill(bill: Bill, session: Session, with_items: bool = False) -> dict:
     data = {
         "id": bill.id,

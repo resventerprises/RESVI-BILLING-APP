@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.3.0-bill-delete"  # delete bills (single/date/range/today/all) with stock restore
+APP_VERSION: str = "1.4.0-sales-delete-count"  # daily-sales delete (aggregate-safe), product count/stats
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

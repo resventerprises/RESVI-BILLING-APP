@@ -216,6 +216,20 @@ def delete_import_batch(batch_id: int):
     })
 
 
+@products_bp.get("/stats")
+def product_stats():
+    """Counts for the Products page and dashboard cards."""
+    from sqlalchemy import func, select
+
+    from database.models import Category, Product, Status
+
+    with session_scope() as s:
+        active = s.scalar(select(func.count(Product.id)).where(Product.status == Status.ACTIVE)) or 0
+        archived = s.scalar(select(func.count(Product.id)).where(Product.status == Status.INACTIVE)) or 0
+        categories = s.scalar(select(func.count(Category.id))) or 0
+    return ok({"active": active, "archived": archived, "categories": categories, "total": active + archived})
+
+
 @products_bp.get("/next-barcode")
 def next_barcode_route():
     """Preview the next auto-generated barcode (does not consume it)."""
