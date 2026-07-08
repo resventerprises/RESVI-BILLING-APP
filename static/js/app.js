@@ -2075,11 +2075,22 @@
 
     const bills = await api.get("/api/bills");
     if (!bills.length) { s.appendChild(emptyBlock("\uD83E\uDDFE", "No bills yet.")); return; }
+
+    // Group bills by their IST date. date_ist is "DD-MM-YYYY".
+    const todayIst = new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" }).replace(/\//g, "-");
+    const yIst = new Date(Date.now() - 864e5).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" }).replace(/\//g, "-");
+    const groups = [];
+    const byDate = {};
     bills.forEach((b) => {
-      const when = (b.date_ist || "") + " " + (b.time_ist || "");
+      const key = b.date_ist || "\u2014";
+      if (!byDate[key]) { byDate[key] = []; groups.push(key); }
+      byDate[key].push(b);
+    });
+
+    const renderRow = (b) => {
       const row = el(`<div class="card product-card" style="grid-template-columns:1fr auto auto;gap:10px;align-items:center">
         <div class="bill-open" style="cursor:pointer"><div class="name">${b.bill_number}</div>
-          <div class="meta">${when} \u00B7 ${b.total_items} items</div></div>
+          <div class="meta">${b.time_ist || ""} \u00B7 ${b.total_items} items</div></div>
         <div class="price">${money(b.grand_total)}</div>
         <button class="btn ghost sm bill-del" title="Delete bill" style="width:auto">\uD83D\uDDD1</button></div>`);
       row.querySelector(".bill-open").onclick = () => go("bill", { id: b.id });
@@ -2089,10 +2100,24 @@
         try {
           const r = await api.del("/api/bills/" + b.id);
           globalToast(r.message || "Bill deleted");
-          row.remove();
+          go("history");
         } catch (err) { alert(err.message); }
       };
-      s.appendChild(row);
+      return row;
+    };
+
+    groups.forEach((key) => {
+      const dayBills = byDate[key];
+      const dayTotal = dayBills.reduce((sum, b) => sum + (b.grand_total || 0), 0);
+      let label = key;
+      if (key === todayIst) label = "Today";
+      else if (key === yIst) label = "Yesterday";
+      const header = el(`<div class="day-header">
+        <span class="dh-date">${label}${label !== key ? ` \u00B7 ${key}` : ""}</span>
+        <span class="dh-sum">${dayBills.length} bill${dayBills.length === 1 ? "" : "s"} \u00B7 ${money(dayTotal)}</span>
+      </div>`);
+      s.appendChild(header);
+      dayBills.forEach((b) => s.appendChild(renderRow(b)));
     });
   });
 

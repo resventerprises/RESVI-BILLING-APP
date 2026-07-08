@@ -787,3 +787,9 @@ table { border-collapse: collapse; width: 100%; }
 /* Discount type toggle */
 .dt-opt { flex: 1; min-height: 44px; }
 .dt-opt.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* ---------- Bill history day grouping ---------- */
+.day-header { display: flex; justify-content: space-between; align-items: baseline;
+  padding: 14px 4px 6px; margin-top: 6px; position: sticky; top: 0; background: #fff; z-index: 5; }
+.day-header .dh-date { font-weight: 800; font-size: 15px; color: #111827; }
+.day-header .dh-sum { font-size: 13px; color: var(--muted); font-weight: 600; }
