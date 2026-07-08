@@ -167,6 +167,7 @@
       ["history", "Bill history", "\uD83E\uDDFE"],
       ["import-history", "Import History", "\uD83D\uDCE5"],
       ["daily", "Daily sales", "\uD83D\uDCC8"],
+      ["cash", "Cash Drawer", "\uD83D\uDCB0"],
       ["reports", "Reports", "\uD83D\uDCC4"],
       ["ai-scan", "AI Scanner (Beta)", "\uD83E\uDDEA"],
       ["settings", "Settings", "\u2699\uFE0F"],
@@ -338,6 +339,21 @@
     quick.appendChild(qa("Settings", "\u2699\uFE0F", "settings", "Backup, restore and app info"));
     s.appendChild(quick);
     view.appendChild(s);
+
+    // Cash Drawer card (cash-only).
+    const cashCard = el(`<div class="card cash-card" style="cursor:pointer"><div class="rep-h">\uD83D\uDCB0 Cash Drawer</div>
+      <div class="muted sm">Loading\u2026</div></div>`);
+    cashCard.onclick = () => go("cash");
+    s.insertBefore(cashCard, quick.previousSibling || quick);
+    api.get("/api/cash/status").then((cd) => {
+      cashCard.innerHTML = `<div class="rep-h">\uD83D\uDCB0 Cash Drawer \u00B7 Today</div>
+        <div class="cash-grid">
+          <div><span>Opening</span><b>${money(cd.opening_cash)}</b></div>
+          <div><span>Cash Sales</span><b>${money(cd.cash_sales)}</b></div>
+          <div><span>Expenses</span><b>${money(cd.cash_expenses)}</b></div>
+          <div><span>Expected</span><b class="net">${money(cd.expected_cash)}</b></div>
+        </div>`;
+    }).catch(() => { cashCard.remove(); });
 
     // Fill stats from the API.
     try {
@@ -1188,7 +1204,7 @@
   }
 
   // ---- Modals ---------------------------------------------------------------
-  function modal(node, { onCancel } = {}) {
+  function modal(node, { onCancel, dismissable = true } = {}) {
     let done = false;
     const back = el(`<div class="modal-back"></div>`);
     back.appendChild(node);
@@ -1199,7 +1215,7 @@
       back.remove();
       camera.lock = { id: null, missed: 0 };
     }
-    back.onclick = (e) => { if (e.target === back) finish(false); };
+    back.onclick = (e) => { if (dismissable && e.target === back) finish(false); };
     document.body.appendChild(back);
     return { resolve: () => finish(true), cancel: () => finish(false) };
   }
@@ -1529,6 +1545,92 @@
       }
     };
   });
+
+  // ---- Cash Drawer ---------------------------------------------------------
+  route("cash", async () => {
+    view.appendChild(topbar("Cash Drawer"));
+    const s = screen();
+    view.appendChild(s);
+    const st = await api.get("/api/cash/status");
+
+    const card = el(`<div class="card">
+      <div class="rep-h">Today \u00B7 ${st.date}</div>
+      <div class="setting-row"><span class="k">Opening Cash</span><span class="v">${money(st.opening_cash)}</span></div>
+      <div class="setting-row"><span class="k">Today's CASH Sales</span><span class="v">${money(st.cash_sales)}</span></div>
+      <div class="setting-row"><span class="k">Cash Expenses</span><span class="v">${money(st.cash_expenses)}</span></div>
+      <div class="setting-row"><span class="k"><b>Expected in Drawer</b></span><span class="price">${money(st.expected_cash)}</span></div>
+      ${st.actual_cash != null ? `<div class="setting-row"><span class="k">Actual Counted</span><span class="v">${money(st.actual_cash)}</span></div>
+        <div class="setting-row" style="border:none"><span class="k">Difference</span><span class="v" style="color:${st.difference < 0 ? "#b91c1c" : "#15803d"}">${st.difference > 0 ? "+" : ""}${money(st.difference)}</span></div>` : ""}
+    </div>`);
+    s.appendChild(card);
+
+    const closeBtn = el(`<button class="btn primary" style="margin-bottom:8px">\uD83C\uDF19 Close Day (Count Cash)</button>`);
+    closeBtn.onclick = () => openCloseDialog(st);
+    s.appendChild(closeBtn);
+    const editOpen = el(`<button class="btn ghost sm" style="width:auto">Edit Opening Cash</button>`);
+    editOpen.onclick = async () => {
+      const v = prompt("Opening cash for today:", st.opening_cash);
+      if (v === null) return;
+      const n = parseFloat(v); if (isNaN(n) || n < 0) return alert("Enter a valid amount.");
+      await api.post("/api/cash/open", { opening_cash: n }); go("cash");
+    };
+    s.appendChild(editOpen);
+
+    // History
+    const hist = await api.get("/api/cash/history");
+    if (hist.length) {
+      s.appendChild(el(`<div class="rep-h" style="margin-top:18px">Cash History</div>`));
+      hist.forEach((h) => {
+        const diffColor = h.difference == null ? "" : (h.difference < 0 ? "#b91c1c" : "#15803d");
+        s.appendChild(el(`<div class="card">
+          <div class="setting-row"><span class="k"><b>${h.date}</b></span><span class="v">${h.closed ? "Closed" : "Open"}</span></div>
+          <div class="setting-row"><span class="k">Opening</span><span class="v">${money(h.opening_cash)}</span></div>
+          <div class="setting-row"><span class="k">Cash Sales</span><span class="v">${money(h.cash_sales)}</span></div>
+          <div class="setting-row"><span class="k">Expenses</span><span class="v">${money(h.cash_expenses)}</span></div>
+          <div class="setting-row"><span class="k">Expected</span><span class="v">${money(h.expected_cash)}</span></div>
+          ${h.actual_cash != null ? `<div class="setting-row"><span class="k">Actual</span><span class="v">${money(h.actual_cash)}</span></div>
+            <div class="setting-row"><span class="k">Difference</span><span class="v" style="color:${diffColor}">${h.difference > 0 ? "+" : ""}${money(h.difference)}</span></div>
+            <div class="setting-row" style="border:none"><span class="k">Closing</span><span class="price">${money(h.closing_cash)}</span></div>` : ""}
+        </div>`));
+      });
+    }
+  });
+
+  function openCloseDialog(st) {
+    const m = el(`<div class="modal"><h3>\uD83C\uDF19 Close Day</h3>
+      <div class="sub">${st.date}</div>
+      <div class="setting-row"><span class="k">Today's Cash Sales</span><span class="v">${money(st.cash_sales)}</span></div>
+      <div class="setting-row"><span class="k">Opening Cash</span><span class="v">${money(st.opening_cash)}</span></div>
+      <div class="field"><label>Cash Expenses</label><input class="input cl-exp" type="number" inputmode="decimal" value="${st.cash_expenses || 0}"/></div>
+      <div class="setting-row"><span class="k"><b>Expected in Drawer</b></span><span class="v cl-exp-val">${money(st.expected_cash)}</span></div>
+      <div class="field"><label>Actual Cash Counted</label><input class="input cl-actual" type="number" inputmode="decimal" placeholder="Count the drawer"/></div>
+      <div class="cl-diff" style="font-weight:700;margin:6px 0"></div>
+      <button class="btn primary cl-save">Save Closing</button>
+      <button class="btn ghost cl-cancel" style="margin-top:8px">Cancel</button></div>`);
+    const ref = modal(m);
+    const recalc = () => {
+      const exp = parseFloat(m.querySelector(".cl-exp").value) || 0;
+      const expected = Math.round((st.opening_cash + st.cash_sales - exp) * 100) / 100;
+      m.querySelector(".cl-exp-val").textContent = money(expected);
+      const actual = parseFloat(m.querySelector(".cl-actual").value);
+      const diffEl = m.querySelector(".cl-diff");
+      if (!isNaN(actual)) {
+        const d = Math.round((actual - expected) * 100) / 100;
+        diffEl.textContent = `Difference: ${d > 0 ? "+" : ""}${money(d)}`;
+        diffEl.style.color = d < 0 ? "#b91c1c" : "#15803d";
+      } else { diffEl.textContent = ""; }
+    };
+    m.querySelector(".cl-exp").oninput = recalc;
+    m.querySelector(".cl-actual").oninput = recalc;
+    m.querySelector(".cl-save").onclick = async () => {
+      const exp = parseFloat(m.querySelector(".cl-exp").value) || 0;
+      const actual = parseFloat(m.querySelector(".cl-actual").value);
+      if (isNaN(actual) || actual < 0) { alert("Enter the actual counted cash."); return; }
+      try { await api.post("/api/cash/close", { cash_expenses: exp, actual_cash: actual }); ref.resolve(); globalToast("Day closed"); go("cash"); }
+      catch (e) { alert(e.message); }
+    };
+    m.querySelector(".cl-cancel").onclick = () => ref.resolve();
+  }
 
   // ---- Reports (Daily / Monthly / Custom, PDF + Excel) ---------------------
   route("reports", async () => {
@@ -2271,12 +2373,34 @@
     s.appendChild(restore);
   });
 
+  // ---- Cash drawer: opening prompt (once per day) --------------------------
+  async function checkCashOpening() {
+    try {
+      const st = await api.get("/api/cash/status");
+      if (!st.needs_opening) return;
+      const suggested = st.yesterday_closing != null ? st.yesterday_closing : (st.suggested_opening || 0);
+      const m = el(`<div class="modal"><h3>\uD83D\uDCB0 Opening Cash</h3>
+        ${st.yesterday_closing != null ? `<div class="sub">Yesterday's closing cash: ${money(st.yesterday_closing)}</div>` : `<div class="sub">Enter the cash you're starting the day with.</div>`}
+        <div class="field"><label>Opening cash in drawer</label>
+          <input class="input oc-val" type="number" inputmode="decimal" value="${suggested}"/></div>
+        <button class="btn primary oc-start">Start Day</button></div>`);
+      const ref = modal(m, { dismissable: false });
+      m.querySelector(".oc-start").onclick = async () => {
+        const v = parseFloat(m.querySelector(".oc-val").value);
+        if (isNaN(v) || v < 0) { alert("Enter a valid amount."); return; }
+        try { await api.post("/api/cash/open", { opening_cash: v }); ref.resolve(); globalToast("Day started"); }
+        catch (e) { alert(e.message); }
+      };
+    } catch (_) { /* cash endpoint unavailable — don't block billing */ }
+  }
+
   // ---- Boot -----------------------------------------------------------------
   function boot() {
     const splash = document.getElementById("splash");
     setTimeout(() => splash.classList.add("hide"), 2000);
     if (!location.hash) location.hash = "home";
     render();
+    checkCashOpening();
   }
   boot();
 })();

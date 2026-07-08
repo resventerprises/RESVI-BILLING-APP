@@ -793,3 +793,8 @@ table { border-collapse: collapse; width: 100%; }
   padding: 14px 4px 6px; margin-top: 6px; position: sticky; top: 0; background: #fff; z-index: 5; }
 .day-header .dh-date { font-weight: 800; font-size: 15px; color: #111827; }
 .day-header .dh-sum { font-size: 13px; color: var(--muted); font-weight: 600; }
+
+/* ---------- Cash drawer ---------- */
+.cash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.cash-grid > div { display: flex; justify-content: space-between; padding: 8px 10px; background: var(--surface-2); border-radius: 8px; }
+.cash-grid .net { color: var(--primary); }

@@ -107,8 +107,23 @@ def report_pdf():
     try:
         with session_scope() as s:
             data = R._aggregate(s, start, end, **_filters())
+            # Attach cash drawer info for single-day reports.
+            cash = None
+            if request.args.get("type", "daily") == "daily":
+                from backend.services import cash_service
+                from datetime import datetime as _dt
+                ds = request.args.get("date")
+                dkey = ds if ds else cash_service.today_key()
+                try:
+                    _dt.strptime(dkey, "%Y-%m-%d")
+                    from database.models import CashDrawer
+                    row = s.get(CashDrawer, dkey)
+                    if row:
+                        cash = cash_service._serialize(s, row)
+                except ValueError:
+                    cash = None
             pdf = R.build_report_pdf(data, report_type=rtype, period_label=label,
-                                     include_daily=include_daily)
+                                     include_daily=include_daily, cash=cash)
     except Exception as exc:  # noqa: BLE001
         current_app.logger.exception("report pdf failed")
         return error("report_error", f"{type(exc).__name__}: {exc}", status=500)

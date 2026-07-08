@@ -210,6 +210,26 @@ class DailySale(Base):
     net_sales: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
 
 
+class CashDrawer(Base):
+    """One row per business day (IST date), tracking the physical cash drawer.
+
+    Cash SALES are never stored here — they are computed live from bills (cash +
+    the cash portion of split payments), so they can't drift. Only the manually
+    entered figures live here.
+    """
+
+    __tablename__ = "cash_drawer"
+
+    drawer_date: Mapped[str] = mapped_column(String(10), primary_key=True)  # YYYY-MM-DD (IST)
+    opening_cash: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    cash_expenses: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    actual_cash: Mapped[float | None] = mapped_column(Float, nullable=True)   # counted at close
+    closing_cash: Mapped[float | None] = mapped_column(Float, nullable=True)  # carried to next day
+    opened: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+
+
 class StockMovement(Base):
     """Every change to a product's quantity: stock-in, sale-out, adjustment."""
 

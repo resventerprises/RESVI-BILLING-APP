@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.7.2-history-daywise"  # bill history grouped by day with headers
+APP_VERSION: str = "1.8.0-cash-drawer"  # cash opening/closing, expenses, difference, history
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 
