@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.8.1-cash-expenses-edit"  # editable expenses input on cash drawer screen
+APP_VERSION: str = "1.9.0-itemized-expenses"  # itemized cash expenses with description, edit/delete, in reports/PDF
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

@@ -10,8 +10,73 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from backend.services.timezone_util import IST, ist_date_key
-from database.models import Bill, CashDrawer
+from backend.services.timezone_util import IST, ist_date_key, ist_time_str
+from database.models import Bill, CashDrawer, CashExpense
+
+
+def _sync_expense_total(session: Session, drawer_date: str) -> float:
+    """Recompute CashDrawer.cash_expenses as the sum of itemized expenses."""
+    rows = session.query(CashExpense).filter(CashExpense.drawer_date == drawer_date).all()
+    total = round(sum(r.amount or 0 for r in rows), 2)
+    row = get_or_create(session, drawer_date)
+    row.cash_expenses = total
+    return total
+
+
+def list_expenses(session: Session, drawer_date: str) -> list[dict]:
+    rows = (
+        session.query(CashExpense)
+        .filter(CashExpense.drawer_date == drawer_date)
+        .order_by(CashExpense.created_at.asc())
+        .all()
+    )
+    return [{
+        "id": r.id,
+        "description": r.description,
+        "amount": round(r.amount or 0, 2),
+        "time": ist_time_str(r.created_at),
+    } for r in rows]
+
+
+def add_expense(session: Session, drawer_date: str, description: str, amount: float) -> dict:
+    desc = (description or "").strip()
+    if not desc:
+        raise ValueError("Expense description is required.")
+    amt = round(float(amount), 2)
+    if amt < 0:
+        raise ValueError("Expense amount cannot be negative.")
+    row = CashExpense(drawer_date=drawer_date, description=desc, amount=amt)
+    session.add(row)
+    session.flush()
+    _sync_expense_total(session, drawer_date)
+    return {"id": row.id, "description": row.description, "amount": amt}
+
+
+def edit_expense(session: Session, expense_id: int, description: str, amount: float) -> bool:
+    row = session.get(CashExpense, expense_id)
+    if not row:
+        return False
+    desc = (description or "").strip()
+    if not desc:
+        raise ValueError("Expense description is required.")
+    amt = round(float(amount), 2)
+    if amt < 0:
+        raise ValueError("Expense amount cannot be negative.")
+    row.description = desc
+    row.amount = amt
+    _sync_expense_total(session, row.drawer_date)
+    return True
+
+
+def delete_expense(session: Session, expense_id: int) -> bool:
+    row = session.get(CashExpense, expense_id)
+    if not row:
+        return False
+    dkey = row.drawer_date
+    session.delete(row)
+    session.flush()
+    _sync_expense_total(session, dkey)
+    return True
 
 
 def cash_sales_for_date(session: Session, drawer_date: str) -> float:
@@ -58,14 +123,19 @@ def get_or_create(session: Session, drawer_date: str) -> CashDrawer:
 
 def _serialize(session: Session, row: CashDrawer) -> dict:
     cash_sales = cash_sales_for_date(session, row.drawer_date)
-    expected = round((row.opening_cash or 0) + cash_sales - (row.cash_expenses or 0), 2)
+    expenses = list_expenses(session, row.drawer_date)
+    expense_total = round(sum(e["amount"] for e in expenses), 2)
+    # Keep the stored total in sync (covers legacy rows / direct edits).
+    expenses_amount = expense_total if expenses else round(row.cash_expenses or 0, 2)
+    expected = round((row.opening_cash or 0) + cash_sales - expenses_amount, 2)
     actual = row.actual_cash
     difference = round((actual - expected), 2) if actual is not None else None
     return {
         "date": row.drawer_date,
         "opening_cash": round(row.opening_cash or 0, 2),
         "cash_sales": cash_sales,
-        "cash_expenses": round(row.cash_expenses or 0, 2),
+        "cash_expenses": expenses_amount,
+        "expenses": expenses,
         "expected_cash": expected,
         "actual_cash": round(actual, 2) if actual is not None else None,
         "difference": difference,
@@ -87,16 +157,14 @@ def status(session: Session) -> dict:
     """Drawer status for today, plus whether an opening prompt is needed."""
     tkey = today_key()
     row = session.get(CashDrawer, tkey)
-    data = _serialize(session, row) if row else {
-        "date": tkey, "opening_cash": 0, "cash_sales": cash_sales_for_date(session, tkey),
-        "cash_expenses": 0, "expected_cash": cash_sales_for_date(session, tkey),
-        "actual_cash": None, "difference": None, "closing_cash": None,
-        "opened": False, "closed": False,
-    }
-    # Suggested opening = yesterday's closing (if any).
+    opened = bool(row and row.opened)
+    if row is None:
+        # Transient (not added to the session) so polling doesn't create rows.
+        row = CashDrawer(drawer_date=tkey, opening_cash=0.0, cash_expenses=0.0)
+    data = _serialize(session, row)
     yrow = session.get(CashDrawer, yesterday_key())
     suggested_opening = (yrow.closing_cash if yrow and yrow.closing_cash is not None else 0)
-    data["needs_opening"] = not (row and row.opened)
+    data["needs_opening"] = not opened
     data["suggested_opening"] = round(suggested_opening or 0, 2)
     data["yesterday_closing"] = round(yrow.closing_cash, 2) if (yrow and yrow.closing_cash is not None) else None
     return data

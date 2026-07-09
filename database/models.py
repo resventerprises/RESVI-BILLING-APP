@@ -230,6 +230,22 @@ class CashDrawer(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
 
 
+class CashExpense(Base):
+    """A single itemized cash expense (description + amount) for a business day.
+
+    The CashDrawer.cash_expenses column is kept in sync as the SUM of these rows,
+    so Expected Cash always reflects the latest expense list.
+    """
+
+    __tablename__ = "cash_expense"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    drawer_date: Mapped[str] = mapped_column(String(10), index=True, nullable=False)  # YYYY-MM-DD (IST)
+    description: Mapped[str] = mapped_column(String(200), nullable=False)
+    amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+
+
 class StockMovement(Base):
     """Every change to a product's quantity: stock-in, sale-out, adjustment."""
 

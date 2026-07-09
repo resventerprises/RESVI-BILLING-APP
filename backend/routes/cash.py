@@ -61,3 +61,44 @@ def close_day():
 def history():
     with session_scope() as s:
         return ok(cash_service.history(s))
+
+
+@cash_bp.get("/expenses/list")
+def expenses_list():
+    d = request.args.get("date") or cash_service.today_key()
+    with session_scope() as s:
+        return ok({"date": d, "expenses": cash_service.list_expenses(s, d)})
+
+
+@cash_bp.post("/expenses/add")
+def expenses_add():
+    body = request.get_json(silent=True) or {}
+    d = body.get("date") or cash_service.today_key()
+    try:
+        with session_scope() as s:
+            item = cash_service.add_expense(s, d, body.get("description", ""), float(body.get("amount", 0)))
+        return ok(item, status=201)
+    except (TypeError, ValueError) as exc:
+        return error("validation_error", str(exc))
+
+
+@cash_bp.post("/expenses/<int:expense_id>/edit")
+def expenses_edit(expense_id: int):
+    body = request.get_json(silent=True) or {}
+    try:
+        with session_scope() as s:
+            found = cash_service.edit_expense(s, expense_id, body.get("description", ""), float(body.get("amount", 0)))
+        if not found:
+            return error("not_found", "Expense not found.", status=404)
+        return ok({"updated": True})
+    except (TypeError, ValueError) as exc:
+        return error("validation_error", str(exc))
+
+
+@cash_bp.delete("/expenses/<int:expense_id>")
+def expenses_delete(expense_id: int):
+    with session_scope() as s:
+        found = cash_service.delete_expense(s, expense_id)
+    if not found:
+        return error("not_found", "Expense not found.", status=404)
+    return ok({"deleted": True})

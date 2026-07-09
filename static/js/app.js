@@ -1557,34 +1557,46 @@
       <div class="rep-h">Today \u00B7 ${st.date}</div>
       <div class="setting-row"><span class="k">Opening Cash</span><span class="v">${money(st.opening_cash)}</span></div>
       <div class="setting-row"><span class="k">Today's CASH Sales</span><span class="v">${money(st.cash_sales)}</span></div>
-      <div class="setting-row" style="align-items:center">
-        <span class="k">Cash Expenses</span>
-        <span class="v" style="display:flex;gap:6px;align-items:center">
-          <input class="input exp-inp" type="number" inputmode="decimal" value="${st.cash_expenses || 0}" style="width:110px;text-align:right;padding:6px 8px"/>
-          <button class="btn primary sm exp-save" style="width:auto">Save</button>
-        </span>
-      </div>
-      <div class="setting-row"><span class="k"><b>Expected in Drawer</b></span><span class="price exp-expected">${money(st.expected_cash)}</span></div>
+      <div class="setting-row"><span class="k">Total Cash Expenses</span><span class="v">${money(st.cash_expenses)}</span></div>
+      <div class="setting-row"><span class="k"><b>Expected in Drawer</b></span><span class="price">${money(st.expected_cash)}</span></div>
       ${st.actual_cash != null ? `<div class="setting-row"><span class="k">Actual Counted</span><span class="v">${money(st.actual_cash)}</span></div>
         <div class="setting-row" style="border:none"><span class="k">Difference</span><span class="v" style="color:${st.difference < 0 ? "#b91c1c" : "#15803d"}">${st.difference > 0 ? "+" : ""}${money(st.difference)}</span></div>` : ""}
     </div>`);
     s.appendChild(card);
 
-    // Inline expenses edit: live-updates the expected figure, saves to backend.
-    const expInp = card.querySelector(".exp-inp");
-    const expExpected = card.querySelector(".exp-expected");
-    const recalcExpected = () => {
-      const exp = parseFloat(expInp.value) || 0;
-      const expected = Math.round((st.opening_cash + st.cash_sales - exp) * 100) / 100;
-      expExpected.textContent = money(expected);
+    // Expenses list with Add / Edit / Delete.
+    const expCard = el(`<div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="rep-h" style="margin:0">Cash Expenses</div>
+        <button class="btn primary sm exp-add" style="width:auto">+ Add Expense</button>
+      </div>
+      <div class="exp-list" style="margin-top:10px"></div>
+    </div>`);
+    s.appendChild(expCard);
+    const renderExpenses = (list) => {
+      const wrap = expCard.querySelector(".exp-list");
+      if (!list.length) { wrap.innerHTML = `<div class="muted sm">No expenses added today.</div>`; return; }
+      wrap.innerHTML = "";
+      list.forEach((e) => {
+        const row = el(`<div class="setting-row" style="align-items:center">
+          <span class="k">${e.description}<div class="muted sm">${e.time || ""}</div></span>
+          <span class="v" style="display:flex;gap:8px;align-items:center">
+            ${money(e.amount)}
+            <button class="btn ghost sm exp-edit" style="width:auto">\u270F\uFE0F</button>
+            <button class="btn ghost sm exp-del" style="width:auto;color:#b91c1c">\uD83D\uDDD1</button>
+          </span></div>`);
+        row.querySelector(".exp-edit").onclick = () => expenseDialog(e);
+        row.querySelector(".exp-del").onclick = async () => {
+          if (!confirm(`Delete expense "${e.description}" (${money(e.amount)})?`)) return;
+          try { await api.del("/api/cash/expenses/" + e.id); globalToast("Expense deleted"); render(); }
+          catch (err) { alert(err.message); }
+        };
+        wrap.appendChild(row);
+      });
+      wrap.appendChild(el(`<div class="setting-row" style="border:none;margin-top:4px"><span class="k"><b>Total Expenses</b></span><span class="price">${money(list.reduce((t, e) => t + e.amount, 0))}</span></div>`));
     };
-    expInp.oninput = recalcExpected;
-    card.querySelector(".exp-save").onclick = async () => {
-      const exp = parseFloat(expInp.value);
-      if (isNaN(exp) || exp < 0) { alert("Enter a valid expense amount."); return; }
-      try { await api.post("/api/cash/expenses", { cash_expenses: exp }); globalToast("Expenses saved"); go("cash"); }
-      catch (e) { alert(e.message); }
-    };
+    renderExpenses(st.expenses || []);
+    expCard.querySelector(".exp-add").onclick = () => expenseDialog(null);
 
     const closeBtn = el(`<button class="btn primary" style="margin-bottom:8px">\uD83C\uDF19 Close Day (Count Cash)</button>`);
     closeBtn.onclick = () => openCloseDialog(st);
@@ -1594,7 +1606,7 @@
       const v = prompt("Opening cash for today:", st.opening_cash);
       if (v === null) return;
       const n = parseFloat(v); if (isNaN(n) || n < 0) return alert("Enter a valid amount.");
-      await api.post("/api/cash/open", { opening_cash: n }); go("cash");
+      await api.post("/api/cash/open", { opening_cash: n }); render();
     };
     s.appendChild(editOpen);
 
@@ -1609,6 +1621,7 @@
           <div class="setting-row"><span class="k">Opening</span><span class="v">${money(h.opening_cash)}</span></div>
           <div class="setting-row"><span class="k">Cash Sales</span><span class="v">${money(h.cash_sales)}</span></div>
           <div class="setting-row"><span class="k">Expenses</span><span class="v">${money(h.cash_expenses)}</span></div>
+          ${(h.expenses && h.expenses.length) ? h.expenses.map((e) => `<div class="setting-row" style="padding-left:12px"><span class="k muted sm">\u2022 ${e.description}</span><span class="v sm">${money(e.amount)}</span></div>`).join("") : ""}
           <div class="setting-row"><span class="k">Expected</span><span class="v">${money(h.expected_cash)}</span></div>
           ${h.actual_cash != null ? `<div class="setting-row"><span class="k">Actual</span><span class="v">${money(h.actual_cash)}</span></div>
             <div class="setting-row"><span class="k">Difference</span><span class="v" style="color:${diffColor}">${h.difference > 0 ? "+" : ""}${money(h.difference)}</span></div>
@@ -1618,37 +1631,56 @@
     }
   });
 
+  function expenseDialog(existing) {
+    const isEdit = !!existing;
+    const m = el(`<div class="modal"><h3>${isEdit ? "Edit" : "Add"} Expense</h3>
+      <div class="field"><label>Expense Description</label>
+        <input class="input ex-desc" type="text" placeholder="e.g. Tea & Snacks" value="${isEdit ? existing.description.replace(/"/g, "&quot;") : ""}"/></div>
+      <div class="field"><label>Expense Amount</label>
+        <input class="input ex-amt" type="number" inputmode="decimal" placeholder="0" value="${isEdit ? existing.amount : ""}"/></div>
+      <button class="btn primary ex-save">Save Expense</button>
+      <button class="btn ghost ex-cancel" style="margin-top:8px">Cancel</button></div>`);
+    const ref = modal(m);
+    m.querySelector(".ex-save").onclick = async () => {
+      const desc = m.querySelector(".ex-desc").value.trim();
+      const amt = parseFloat(m.querySelector(".ex-amt").value);
+      if (!desc) { alert("Please enter a description."); return; }
+      if (isNaN(amt) || amt < 0) { alert("Please enter a valid amount."); return; }
+      try {
+        if (isEdit) await api.post(`/api/cash/expenses/${existing.id}/edit`, { description: desc, amount: amt });
+        else await api.post("/api/cash/expenses/add", { description: desc, amount: amt });
+        ref.resolve(); globalToast("Expense saved"); render();
+      } catch (e) { alert(e.message); }
+    };
+    m.querySelector(".ex-cancel").onclick = () => ref.resolve();
+  }
+
   function openCloseDialog(st) {
     const m = el(`<div class="modal"><h3>\uD83C\uDF19 Close Day</h3>
       <div class="sub">${st.date}</div>
       <div class="setting-row"><span class="k">Today's Cash Sales</span><span class="v">${money(st.cash_sales)}</span></div>
       <div class="setting-row"><span class="k">Opening Cash</span><span class="v">${money(st.opening_cash)}</span></div>
-      <div class="field"><label>Cash Expenses</label><input class="input cl-exp" type="number" inputmode="decimal" value="${st.cash_expenses || 0}"/></div>
-      <div class="setting-row"><span class="k"><b>Expected in Drawer</b></span><span class="v cl-exp-val">${money(st.expected_cash)}</span></div>
+      <div class="setting-row"><span class="k">Total Cash Expenses</span><span class="v">${money(st.cash_expenses)}</span></div>
+      <div class="setting-row"><span class="k"><b>Expected in Drawer</b></span><span class="v">${money(st.expected_cash)}</span></div>
       <div class="field"><label>Actual Cash Counted</label><input class="input cl-actual" type="number" inputmode="decimal" placeholder="Count the drawer"/></div>
       <div class="cl-diff" style="font-weight:700;margin:6px 0"></div>
       <button class="btn primary cl-save">Save Closing</button>
       <button class="btn ghost cl-cancel" style="margin-top:8px">Cancel</button></div>`);
     const ref = modal(m);
     const recalc = () => {
-      const exp = parseFloat(m.querySelector(".cl-exp").value) || 0;
-      const expected = Math.round((st.opening_cash + st.cash_sales - exp) * 100) / 100;
-      m.querySelector(".cl-exp-val").textContent = money(expected);
       const actual = parseFloat(m.querySelector(".cl-actual").value);
       const diffEl = m.querySelector(".cl-diff");
       if (!isNaN(actual)) {
-        const d = Math.round((actual - expected) * 100) / 100;
+        const d = Math.round((actual - st.expected_cash) * 100) / 100;
         diffEl.textContent = `Difference: ${d > 0 ? "+" : ""}${money(d)}`;
         diffEl.style.color = d < 0 ? "#b91c1c" : "#15803d";
       } else { diffEl.textContent = ""; }
     };
-    m.querySelector(".cl-exp").oninput = recalc;
     m.querySelector(".cl-actual").oninput = recalc;
     m.querySelector(".cl-save").onclick = async () => {
-      const exp = parseFloat(m.querySelector(".cl-exp").value) || 0;
       const actual = parseFloat(m.querySelector(".cl-actual").value);
       if (isNaN(actual) || actual < 0) { alert("Enter the actual counted cash."); return; }
-      try { await api.post("/api/cash/close", { cash_expenses: exp, actual_cash: actual }); ref.resolve(); globalToast("Day closed"); go("cash"); }
+      try { await api.post("/api/cash/close", { cash_expenses: st.cash_expenses, actual_cash: actual }); ref.resolve(); globalToast("Day closed"); render(); }
       catch (e) { alert(e.message); }
     };
     m.querySelector(".cl-cancel").onclick = () => ref.resolve();
