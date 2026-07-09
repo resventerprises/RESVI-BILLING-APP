@@ -1892,8 +1892,8 @@
       <div class="btn-row">
         <div class="field" style="flex:1"><label>Discount</label>
           <input class="input" name="discount" type="number" inputmode="decimal" value="${product ? product.discount : "0"}"/></div>
-        <div class="field" style="flex:1"><label>${editing ? "Stock (use Inventory to change)" : "Opening stock"}</label>
-          <input class="input" name="quantity" type="number" inputmode="numeric" value="${product ? product.quantity : "0"}" ${editing ? "disabled" : ""}/></div>
+        <div class="field" style="flex:1"><label>${editing ? "Stock quantity" : "Opening stock"}</label>
+          <input class="input" name="quantity" type="number" inputmode="numeric" value="${product ? product.quantity : "0"}"/></div>
         <div class="field" style="flex:1"><label>Min stock level</label>
           <input class="input" name="min_stock_level" type="number" inputmode="numeric" value="${product ? product.min_stock_level : "0"}"/></div>
       </div>
@@ -1998,6 +1998,7 @@
             selling_price: form.querySelector('[name="selling_price"]').value,
             cost_price: form.querySelector('[name="cost_price"]').value,
             discount: form.querySelector('[name="discount"]').value,
+            quantity: form.querySelector('[name="quantity"]').value,
             min_stock_level: form.querySelector('[name="min_stock_level"]').value,
             description: form.querySelector('[name="description"]').value,
             barcode: form.querySelector('[name="barcode"]').value,

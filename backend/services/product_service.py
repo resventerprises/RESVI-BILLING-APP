@@ -149,9 +149,18 @@ def update_product(
             fields["barcode"] = bc
         else:
             fields["barcode"] = None
-    # Quantity is never edited directly here — it changes only through the
-    # inventory module (stock-in / adjust / sale) so history stays accurate.
-    fields.pop("quantity", None)
+    # Quantity: record the change as a stock adjustment so inventory history
+    # stays accurate (rather than a raw overwrite).
+    new_qty = fields.pop("quantity", None)
+    qty_delta = None
+    if new_qty is not None and str(new_qty) != "":
+        try:
+            target = int(new_qty)
+        except (TypeError, ValueError):
+            raise ValidationError("Quantity must be a whole number.")
+        if target < 0:
+            raise ValidationError("Quantity cannot be negative.")
+        qty_delta = target - (product.quantity or 0)
     if "family_key" in fields:
         fk = fields["family_key"]
         fields["family_key"] = (fk.strip() or None) if fk else None
@@ -165,6 +174,11 @@ def update_product(
         status_change = new_status
 
     product = repo.products.update(session, product, **fields)
+
+    # Apply any quantity change through the inventory module for history.
+    if qty_delta:
+        from backend.services import inventory_service
+        inventory_service.adjust(session, product.id, qty_delta, remarks="Manual edit")
 
     # Keep the index consistent with status.
     if status_change is Status.INACTIVE:

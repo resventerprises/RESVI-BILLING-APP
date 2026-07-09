@@ -120,3 +120,20 @@ def init_db() -> None:
 
     models.Base.metadata.create_all(bind=engine)
     _ensure_columns()
+    _ensure_others_category()
+
+
+def _ensure_others_category() -> None:
+    """Guarantee a default 'Others' category exists for products that don't fit
+    any specific category."""
+    from sqlalchemy import func, select
+
+    from database import models
+
+    with SessionLocal() as s:
+        exists = s.scalar(
+            select(models.Category).where(func.lower(models.Category.category_name) == "others")
+        )
+        if exists is None:
+            s.add(models.Category(category_name="Others"))
+            s.commit()

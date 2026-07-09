@@ -48,7 +48,8 @@ class ProductRepository(CRUDBase[Product]):
         term: str | None = None,
         category_id: int | None = None,
         only_active: bool = False,
-        limit: int = 100,
+        limit: int | None = None,
+        offset: int = 0,
     ):
         stmt = select(Product)
         if only_active:
@@ -62,8 +63,34 @@ class ProductRepository(CRUDBase[Product]):
                 | (Product.product_code.ilike(like))
                 | (Product.barcode.ilike(like))
             )
-        stmt = stmt.order_by(Product.product_name).limit(limit)
+        stmt = stmt.order_by(Product.product_name)
+        if offset:
+            stmt = stmt.offset(offset)
+        if limit is not None:
+            stmt = stmt.limit(limit)
         return session.scalars(stmt).all()
+
+    def search_count(
+        self,
+        session: Session,
+        term: str | None = None,
+        category_id: int | None = None,
+        only_active: bool = False,
+    ) -> int:
+        from sqlalchemy import func
+        stmt = select(func.count(Product.id))
+        if only_active:
+            stmt = stmt.where(Product.status == Status.ACTIVE)
+        if category_id is not None:
+            stmt = stmt.where(Product.category_id == category_id)
+        if term:
+            like = f"%{term.strip()}%"
+            stmt = stmt.where(
+                (Product.product_name.ilike(like))
+                | (Product.product_code.ilike(like))
+                | (Product.barcode.ilike(like))
+            )
+        return session.scalar(stmt) or 0
 
 
 class ProductImageRepository(CRUDBase[ProductImage]):

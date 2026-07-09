@@ -21,12 +21,15 @@ def _recognizer():
 def list_products():
     term = request.args.get("q")
     category_id = request.args.get("category_id", type=int)
-    # Archived products (status=inactive) are hidden everywhere by default.
-    # Pass include_inactive=1 explicitly to see them; active=1 also forces active-only.
     only_active = request.args.get("include_inactive") != "1"
+    # Pagination is optional. With no limit, ALL matching products are returned
+    # (previously capped at 100, which hid products after ~C alphabetically).
+    limit = request.args.get("limit", type=int)
+    offset = request.args.get("offset", type=int) or 0
     with session_scope() as s:
         items = product_service.search_products(
-            s, term=term, category_id=category_id, only_active=only_active
+            s, term=term, category_id=category_id, only_active=only_active,
+            limit=limit, offset=offset,
         )
         return ok([product_service.serialize(p, s) for p in items])
 

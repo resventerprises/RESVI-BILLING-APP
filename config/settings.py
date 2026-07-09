@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.9.0-itemized-expenses"  # itemized cash expenses with description, edit/delete, in reports/PDF
+APP_VERSION: str = "1.10.0-product-mgmt"  # show all products (fix 100 cap), Others category, editable qty, add/edit verified
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 
