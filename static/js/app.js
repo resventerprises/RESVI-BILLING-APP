@@ -14,6 +14,22 @@
   };
   const vibrate = (ms) => navigator.vibrate && navigator.vibrate(ms);
 
+  // ---- Single source of truth for app modules -------------------------------
+  // Home tiles (mobile/tablet/desktop) are generated from this list, so adding a
+  // module here makes it appear everywhere automatically. Order matches the spec.
+  const MODULES = [
+    { target: "scan", label: "Scan barcode", icon: "\uD83D\uDCF3", desc: "Scan or type a barcode to bill" },
+    { target: "scan?voice=1", label: "Voice search", icon: "\uD83C\uDF99\uFE0F", desc: "Speak a product name to add it" },
+    { target: "products", label: "Products", icon: "\uD83D\uDCE6", desc: "Browse and manage your catalogue" },
+    { target: "inventory", label: "Inventory", icon: "\uD83D\uDCCA", desc: "Stock levels, stock-in and history" },
+    { target: "categories", label: "Categories", icon: "\uD83D\uDDC2\uFE0F", desc: "Organize products into groups" },
+    { target: "history", label: "Bill history", icon: "\uD83E\uDDFE", desc: "Review past bills" },
+    { target: "daily", label: "Daily sales", icon: "\uD83D\uDCC8", desc: "Day-by-day sales summary" },
+    { target: "cash", label: "Cash Drawer", icon: "\uD83D\uDCB0", desc: "Opening, closing and expenses" },
+    { target: "reports", label: "Reports", icon: "\uD83D\uDCC4", desc: "Daily, monthly and custom reports" },
+    { target: "settings", label: "Settings", icon: "\u2699\uFE0F", desc: "Backup, restore and app info" },
+  ];
+
   // ---- Scan sounds (Web Audio, no asset files) ------------------------------
   const Sound = (() => {
     let ctx = null;
@@ -291,18 +307,12 @@
       t.onclick = () => go(target);
       return t;
     };
-    actions.appendChild(make("Scan barcode", "\uD83D\uDCF3", "scan", true));
-    // Voice Search: opens the scan screen and auto-starts the mic.
-    const voiceTile = el(`<button class="tile primary">
-      <div class="ico">\uD83C\uDF99\uFE0F</div><div class="label">Voice Search</div></button>`);
-    voiceTile.onclick = () => go("scan", { voice: "1" });
-    actions.appendChild(voiceTile);
-    actions.appendChild(make("Products", "\uD83D\uDCE6", "products"));
-    actions.appendChild(make("Inventory", "\uD83D\uDCCA", "inventory"));
-    actions.appendChild(make("Categories", "\uD83D\uDDC2\uFE0F", "categories"));
-    actions.appendChild(make("Bill history", "\uD83E\uDDFE", "history"));
-    actions.appendChild(make("Daily sales", "\uD83D\uDCC8", "daily"));
-    actions.appendChild(make("Settings", "\u2699\uFE0F", "settings"));
+    // Generated from the shared MODULES list so mobile shows every module and
+    // future modules appear automatically. Scan + Voice are highlighted.
+    MODULES.forEach((m) => {
+      const primary = m.target === "scan" || m.target === "scan?voice=1";
+      actions.appendChild(make(m.label, m.icon, m.target, primary));
+    });
     view.appendChild(home);
   });
 
@@ -328,15 +338,7 @@
       c.onclick = () => go(target);
       return c;
     };
-    quick.appendChild(qa("Scan barcode", "\uD83D\uDCF3", "scan", "Scan or type a barcode to bill"));
-    quick.appendChild(qa("Voice search", "\uD83C\uDF99\uFE0F", "scan?voice=1", "Speak a product name to add it"));
-    quick.appendChild(qa("Add product", "\u2795", "product", "Enroll a new product with photos"));
-    quick.appendChild(qa("Products", "\uD83D\uDCE6", "products", "Browse and manage your catalogue"));
-    quick.appendChild(qa("Inventory", "\uD83D\uDCCA", "inventory", "Stock levels, stock-in and history"));
-    quick.appendChild(qa("Categories", "\uD83D\uDDC2\uFE0F", "categories", "Organize products into groups"));
-    quick.appendChild(qa("Bill history", "\uD83E\uDDFE", "history", "Review past bills"));
-    quick.appendChild(qa("Daily sales", "\uD83D\uDCC8", "daily", "Day-by-day sales summary"));
-    quick.appendChild(qa("Settings", "\u2699\uFE0F", "settings", "Backup, restore and app info"));
+    MODULES.forEach((m) => quick.appendChild(qa(m.label, m.icon, m.target, m.desc)));
     s.appendChild(quick);
     view.appendChild(s);
 

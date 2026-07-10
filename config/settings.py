@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.10.0-product-mgmt"  # show all products (fix 100 cap), Others category, editable qty, add/edit verified
+APP_VERSION: str = "1.11.0-home-modules"  # unified home tiles from module list, responsive 2/3/4 grid
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

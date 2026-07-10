@@ -219,6 +219,18 @@ img { display: block; }
 .bl-qty button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border); background: #fff; font-size: 16px; cursor: pointer; }
 .bl-amt { font-weight: 700; min-width: 64px; text-align: right; }
 
+/* ---------- Home quick actions grid (mobile-first) ----------
+   Mobile: 2 columns. Tablet: 3-4 (set in media queries below). Desktop keeps
+   the sidebar shell. Cards are equal height via grid + flex column. */
+.quick-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 8px; }
+.quick-card { display: flex; flex-direction: column; text-align: left; border: 1px solid var(--border);
+  border-radius: 16px; padding: 16px; background: #fff; cursor: pointer; box-shadow: var(--shadow);
+  min-height: 116px; transition: transform .08s ease, border-color .15s; }
+.quick-card:active { transform: scale(.98); }
+.quick-card .qc-ico { font-size: 24px; }
+.quick-card .qc-label { font-weight: 700; margin-top: 8px; font-size: 15px; }
+.quick-card .qc-desc { color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.3; }
+
 /* ======================================================================
    DESKTOP / PC LAYOUT — a real desktop app (sidebar + main), not a wide
    phone. Auto-applies at >= 860px so laptops (incl. scaled displays) get it.
@@ -268,8 +280,8 @@ img { display: block; }
   .stat-card.accent-green { border-top-color: var(--success); }
   .stat-val { font-size: 30px; font-weight: 800; letter-spacing: -.01em; }
   .stat-lbl { color: var(--muted); font-size: 13px; margin-top: 4px; font-weight: 600; }
-  .quick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
-  .quick-card { text-align: left; border: 1px solid var(--border); border-radius: 18px; padding: 20px; background: #fff; cursor: pointer; box-shadow: var(--shadow); transition: transform .08s ease, border-color .15s; }
+  .quick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .quick-card { min-height: 132px; padding: 20px; border-radius: 18px; }
   .quick-card:hover { transform: translateY(-2px); border-color: var(--primary); }
   .qc-ico { font-size: 26px; }
   .qc-label { font-weight: 700; font-size: 17px; margin-top: 10px; }
@@ -529,7 +541,7 @@ input, select, textarea, button { max-width: 100%; }
   /* Product cards: 2-up on tablets instead of forcing 320px min. */
   .product-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
   .stat-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
-  .quick-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .quick-grid { grid-template-columns: repeat(3, 1fr); }
   /* Scan: keep camera + bill side by side but give the bill a sensible min. */
   .scan-screen { grid-template-columns: 1fr minmax(300px, 380px); }
 }
