@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.11.0-home-modules"  # unified home tiles from module list, responsive 2/3/4 grid
+APP_VERSION: str = "1.12.0-draft-bills"  # multiple hold/draft bills with autosave + device sync
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

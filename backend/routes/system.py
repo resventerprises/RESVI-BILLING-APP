@@ -26,18 +26,22 @@ def data_version():
     changes the fingerprint, prompting other clients to refresh."""
     from sqlalchemy import func, select
     from database.db import session_scope
-    from database.models import Bill, Product, StockMovement
+    from database.models import Bill, DraftBill, Product, StockMovement
 
     with session_scope() as s:
         products = s.scalar(select(func.count(Product.id))) or 0
         bills = s.scalar(select(func.count(Bill.id))) or 0
         movements = s.scalar(select(func.count(StockMovement.id))) or 0
+        drafts = s.scalar(
+            select(func.count(DraftBill.id)).where(DraftBill.status == "ACTIVE")
+        ) or 0
         # Latest change timestamps (nullable-safe).
         last_bill = s.scalar(select(func.max(Bill.bill_date)))
         last_move = s.scalar(select(func.max(StockMovement.created_at)))
-    stamp = max([t for t in (last_bill, last_move) if t is not None], default=None)
-    fingerprint = f"{products}-{bills}-{movements}-{stamp.isoformat() if stamp else '0'}"
-    return ok({"version": fingerprint, "products": products, "bills": bills})
+        last_draft = s.scalar(select(func.max(DraftBill.updated_at)))
+    stamp = max([t for t in (last_bill, last_move, last_draft) if t is not None], default=None)
+    fingerprint = f"{products}-{bills}-{movements}-{drafts}-{stamp.isoformat() if stamp else '0'}"
+    return ok({"version": fingerprint, "products": products, "bills": bills, "drafts": drafts})
 
 
 @system_bp.get("/info")

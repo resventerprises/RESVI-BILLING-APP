@@ -19,6 +19,7 @@
   // module here makes it appear everywhere automatically. Order matches the spec.
   const MODULES = [
     { target: "scan", label: "Scan barcode", icon: "\uD83D\uDCF3", desc: "Scan or type a barcode to bill" },
+    { target: "drafts", label: "Draft bills", icon: "\uD83D\uDCCB", desc: "Held bills waiting to be paid" },
     { target: "scan?voice=1", label: "Voice search", icon: "\uD83C\uDF99\uFE0F", desc: "Speak a product name to add it" },
     { target: "products", label: "Products", icon: "\uD83D\uDCE6", desc: "Browse and manage your catalogue" },
     { target: "inventory", label: "Inventory", icon: "\uD83D\uDCCA", desc: "Stock levels, stock-in and history" },
@@ -84,6 +85,28 @@
   const cart = {
     lines: [], // {product_id, name, price, discount, qty, imageId}
     manual: [], // {name, price, qty} — one-off items, not in DB
+    draftId: null, // server-side draft this cart is bound to (null until first item)
+    customerName: "",
+    serialize() {
+      return {
+        lines: this.lines,
+        manual: this.manual,
+        discountType: this.discountType || null,
+        discountValue: this.discountValue || 0,
+        finalAmount: this.finalAmount == null ? null : this.finalAmount,
+      };
+    },
+    restore(payload, draftId, customerName) {
+      const p = payload || {};
+      this.lines = Array.isArray(p.lines) ? p.lines : [];
+      this.manual = Array.isArray(p.manual) ? p.manual : [];
+      this.discountType = p.discountType || null;
+      this.discountValue = p.discountValue || 0;
+      this.finalAmount = p.finalAmount == null ? null : p.finalAmount;
+      this.lastProductId = null;
+      this.draftId = draftId || null;
+      this.customerName = customerName || "";
+    },
     add(p) {
       const existing = this.lines.find((l) => l.product_id === p.product_id);
       if (existing) existing.qty += 1;
@@ -131,6 +154,8 @@
       this.lastProductId = null;
       this.finalAmount = null; // manual bargain override
       this.discountType = null; this.discountValue = 0;
+      this.draftId = null;
+      this.customerName = "";
     },
     count() {
       return this.lines.reduce((s, l) => s + l.qty, 0)
@@ -155,6 +180,53 @@
     },
   };
 
+  // ---- Draft (hold bill) autosave -------------------------------------------
+  // Every cart change is saved to the server, so a draft survives a refresh, an
+  // app close, and is visible on all devices. The first item creates the draft.
+  let _draftSaveTimer = null;
+  let _draftSaving = false;
+  function autosaveDraft(immediate) {
+    clearTimeout(_draftSaveTimer);
+    const run = async () => {
+      if (_draftSaving) return;
+      // Nothing to save: empty cart that was never a draft.
+      if (cart.isEmpty() && !cart.draftId) return;
+      _draftSaving = true;
+      try {
+        if (!cart.draftId) {
+          const d = await api.post("/api/drafts", {
+            customer_name: cart.customerName || "",
+            payload: cart.serialize(),
+          });
+          cart.draftId = d.id;
+          updateDraftBadge();
+        } else {
+          await api.put("/api/drafts/" + cart.draftId, {
+            payload: cart.serialize(),
+            customer_name: cart.customerName || "",
+          });
+        }
+      } catch (_) {
+        // Offline or transient error — the next change retries.
+      } finally {
+        _draftSaving = false;
+      }
+    };
+    if (immediate) run();
+    else _draftSaveTimer = setTimeout(run, 600); // debounce rapid scanning
+  }
+
+  // Keeps the "Drafts (n)" badge in sync wherever it's shown.
+  async function updateDraftBadge() {
+    try {
+      const r = await api.get("/api/drafts/count");
+      document.querySelectorAll(".draft-badge").forEach((b) => {
+        b.textContent = r.active > 0 ? String(r.active) : "";
+        b.hidden = !r.active;
+      });
+    } catch (_) {}
+  }
+
   // ---- Desktop shell --------------------------------------------------------
   const DESKTOP_QUERY = window.matchMedia("(min-width: 768px)");
   function isDesktop() { return DESKTOP_QUERY.matches; }
@@ -177,6 +249,7 @@
     const nav = el(`<nav class="side-nav"></nav>`);
     [
       ["scan", "New bill", "\uD83D\uDCF3"],
+      ["drafts", "Draft bills", "\uD83D\uDCCB"],
       ["products", "Products", "\uD83D\uDCE6"],
       ["categories", "Categories", "\uD83D\uDDC2\uFE0F"],
       ["inventory", "Inventory", "\uD83D\uDCCA"],
@@ -357,6 +430,16 @@
         </div>`;
     }).catch(() => { cashCard.remove(); });
 
+    // Active draft (held) bills card.
+    const draftCard = el(`<div class="card draft-dash" style="cursor:pointer"><div class="rep-h">\uD83D\uDCCB Draft bills</div>
+      <div class="muted sm">Loading\u2026</div></div>`);
+    draftCard.onclick = () => go("drafts");
+    s.insertBefore(draftCard, cashCard.nextSibling);
+    api.get("/api/drafts/count").then((r) => {
+      draftCard.innerHTML = `<div class="rep-h">\uD83D\uDCCB Draft bills</div>
+        <div class="cash-grid"><div><span>Active</span><b class="net">${r.active}</b></div></div>`;
+    }).catch(() => { draftCard.remove(); });
+
     // Fill stats from the API.
     try {
       const [products, categories, days, info] = await Promise.all([
@@ -455,6 +538,10 @@
             <button class="btn ghost add-manual">\u2795 Add Manual Item</button>
           </div>
           <div class="actions">
+            <button class="btn ghost drafts-btn">\uD83D\uDCCB Drafts <span class="draft-badge pill" hidden></span></button>
+            <button class="btn ghost hold-btn">\uD83D\uDCE5 Hold &amp; New</button>
+          </div>
+          <div class="actions">
             <button class="btn ghost undo">Undo last</button>
             <button class="btn primary complete">Complete bill</button>
           </div>
@@ -474,6 +561,7 @@
     const setStatus = (state, text) => { ssDot.className = "ss-dot " + state; if (text != null) ssText.textContent = text; };
 
     const refreshBill = () => {
+      autosaveDraft();   // hold-bill autosave: persist every cart change
       const count = cart.count();
       const sub = cart.total();
       const final = cart.finalTotal();
@@ -508,6 +596,22 @@
       });
     };
     refreshBill();
+    updateDraftBadge();
+    scr.querySelector(".drafts-btn").onclick = () => go("drafts");
+    // "Hold & New": the current cart is already autosaved as a draft, so we just
+    // detach from it and start a fresh bill. Nothing is lost.
+    scr.querySelector(".hold-btn").onclick = async () => {
+      if (cart.isEmpty()) { alert("Add items before holding this bill."); return; }
+      autosaveDraft(true);                    // flush immediately
+      const name = prompt("Customer name for this held bill (optional):", cart.customerName || "");
+      if (name !== null && cart.draftId) {
+        try { await api.put("/api/drafts/" + cart.draftId, { customer_name: name, payload: cart.serialize() }); } catch (_) {}
+      }
+      cart.clear();
+      refreshBill();
+      updateDraftBadge();
+      globalToast("Bill held \u2014 started a new one");
+    };
     scr.querySelector(".undo").onclick = () => { cart.undoLast(); cart.finalAmount = null; vibrate(10); refreshBill(); };
     scr.querySelector(".complete").onclick = () => completeBill(refreshBill);
     // Manual final amount (bargain).
@@ -872,6 +976,7 @@
     };
 
     const refreshBill = () => {
+      autosaveDraft();   // hold-bill autosave: persist every cart change
       scr.querySelector(".count").textContent = cart.count() + " item" + (cart.count() === 1 ? "" : "s");
       scr.querySelector(".total").textContent = money(cart.total());
       listEl.innerHTML = "";
@@ -1348,6 +1453,7 @@
     }
     try {
       const payload = { items: cart.payload(), payment_method: pay };
+      if (cart.draftId) payload.draft_id = cart.draftId;
       if (cart.finalAmount != null) payload.final_amount = cart.finalAmount;
       if (cart.discountType && cart.discountValue) { payload.discount_type = cart.discountType; payload.discount_value = cart.discountValue; }
       if (cart.manual.length) payload.manual_items = cart.manualPayload();
@@ -1355,6 +1461,7 @@
       const bill = await api.post("/api/bills/complete", payload);
       cart.clear();
       refreshBill();
+      updateDraftBadge();
       const discLine = bill.total_discount > 0 ? ` \u00B7 saved ${money(bill.total_discount)}` : "";
       const m = el(`<div class="modal"><h3>Bill saved</h3>
         <div class="sub">${bill.bill_number} \u00B7 ${money(bill.grand_total)} \u00B7 ${bill.payment_method.toUpperCase()}${discLine}</div>
@@ -1546,6 +1653,64 @@
         btn.disabled = false; btn.textContent = "Import products";
       }
     };
+  });
+
+  // ---- Draft (held) bills ---------------------------------------------------
+  route("drafts", async () => {
+    view.appendChild(topbar("Draft bills"));
+    const s = screen();
+    view.appendChild(s);
+
+    const head = el(`<div class="searchbar">
+      <input class="input dr-search" type="text" inputmode="text" enterkeyhint="search"
+        placeholder="\uD83D\uDD0D Search by customer name or draft number"/>
+    </div>`);
+    const listWrap = el(`<div class="list"></div>`);
+    s.appendChild(head); s.appendChild(listWrap);
+
+    async function load() {
+      const q = head.querySelector(".dr-search").value.trim();
+      const drafts = await api.get("/api/drafts" + (q ? "?q=" + encodeURIComponent(q) : ""));
+      listWrap.innerHTML = "";
+      if (!drafts.length) {
+        listWrap.appendChild(emptyBlock("\uD83D\uDCCB", q ? "No drafts match that search." : "No held bills. Start a bill and tap \u201CHold & New\u201D to park it."));
+        return;
+      }
+      drafts.forEach((d) => {
+        const isCurrent = cart.draftId === d.id;
+        const row = el(`<div class="card product-card draft-card" style="grid-template-columns:1fr auto auto;gap:10px;align-items:center">
+          <div class="dr-open" style="cursor:pointer">
+            <div class="name">${d.draft_number}${isCurrent ? ' <span class="pill">current</span>' : ""}</div>
+            <div class="meta">${d.customer_name || "Walk-in"} \u00B7 ${d.item_count} item${d.item_count === 1 ? "" : "s"} \u00B7 ${d.updated_time}</div>
+          </div>
+          <div class="price">${money(d.total)}</div>
+          <button class="btn ghost sm dr-del" title="Delete draft" style="width:auto;color:#b91c1c">\uD83D\uDDD1</button>
+        </div>`);
+        row.querySelector(".dr-open").onclick = async () => {
+          // Current cart is already autosaved, so switching loses nothing.
+          autosaveDraft(true);
+          try {
+            const full = await api.get("/api/drafts/" + d.id);
+            cart.restore(full.payload, full.id, full.customer_name);
+            go("scan");
+          } catch (e) { alert(e.message); }
+        };
+        row.querySelector(".dr-del").onclick = async () => {
+          if (!confirm(`Delete ${d.draft_number}${d.customer_name ? " (" + d.customer_name + ")" : ""}?\n\nThis does not affect Bill History.`)) return;
+          try {
+            await api.del("/api/drafts/" + d.id);
+            if (cart.draftId === d.id) { cart.clear(); }
+            globalToast("Draft deleted");
+            updateDraftBadge();
+            load();
+          } catch (e) { alert(e.message); }
+        };
+        listWrap.appendChild(row);
+      });
+    }
+    let t;
+    head.querySelector(".dr-search").oninput = () => { clearTimeout(t); t = setTimeout(load, 200); };
+    load();
   });
 
   // ---- Cash Drawer ---------------------------------------------------------

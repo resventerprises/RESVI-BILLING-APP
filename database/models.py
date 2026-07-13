@@ -246,6 +246,28 @@ class CashExpense(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
 
 
+class DraftBill(Base):
+    """A held/parked bill — a bill in progress that hasn't been paid yet.
+
+    Stored server-side (not in the browser) so drafts survive a refresh, an app
+    close, and are shared across every device. The cart contents live in the
+    `payload` JSON blob; stock is NOT reserved until the bill is completed.
+    """
+
+    __tablename__ = "draft_bill"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    draft_number: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    customer_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    payload: Mapped[str] = mapped_column(Text, default="{}", nullable=False)  # JSON cart
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(12), default="ACTIVE", nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+
 class StockMovement(Base):
     """Every change to a product's quantity: stock-in, sale-out, adjustment."""
 
