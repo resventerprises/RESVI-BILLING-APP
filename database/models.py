@@ -268,6 +268,56 @@ class DraftBill(Base):
     )
 
 
+class Replacement(Base):
+    """A product return / exchange.
+
+    Three cases:
+      * new product costs MORE  -> customer pays the difference (a Bill is created
+        for that amount, so it lands in Bill History and the cash drawer).
+      * new product costs LESS  -> customer is refunded the difference (cash out).
+      * no new product          -> full refund of the returned item (cash out).
+
+    Inventory: the returned item goes back INTO stock, the replacement item comes
+    OUT of stock. Refunds are deducted from the cash drawer for the day.
+    """
+
+    __tablename__ = "replacement"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    replacement_number: Mapped[str] = mapped_column(String(24), unique=True, index=True, nullable=False)
+    customer_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    mobile: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    returned_product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("products.id", ondelete="SET NULL"), nullable=True
+    )
+    returned_name: Mapped[str] = mapped_column(String(200), default="", nullable=False)
+    returned_qty: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    returned_price: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    old_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+
+    replacement_product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("products.id", ondelete="SET NULL"), nullable=True
+    )
+    replacement_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    replacement_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    replacement_price: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    new_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+
+    difference: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)   # new - old
+    collected_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    refund_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    payment_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    payment_breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    bill_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bills.id", ondelete="SET NULL"), nullable=True
+    )
+    kind: Mapped[str] = mapped_column(String(16), default="EXCHANGE", nullable=False)  # EXCHANGE|REFUND_ONLY
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+
+
 class StockMovement(Base):
     """Every change to a product's quantity: stock-in, sale-out, adjustment."""
 

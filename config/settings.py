@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.12.0-draft-bills"  # multiple hold/draft bills with autosave + device sync
+APP_VERSION: str = "1.13.0-export-replacement"  # product Excel export + replacement/refund module
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

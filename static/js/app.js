@@ -25,6 +25,7 @@
     { target: "inventory", label: "Inventory", icon: "\uD83D\uDCCA", desc: "Stock levels, stock-in and history" },
     { target: "categories", label: "Categories", icon: "\uD83D\uDDC2\uFE0F", desc: "Organize products into groups" },
     { target: "history", label: "Bill history", icon: "\uD83E\uDDFE", desc: "Review past bills" },
+    { target: "replacement", label: "Replacement", icon: "\uD83D\uDD01", desc: "Returns, exchanges and refunds" },
     { target: "daily", label: "Daily sales", icon: "\uD83D\uDCC8", desc: "Day-by-day sales summary" },
     { target: "cash", label: "Cash Drawer", icon: "\uD83D\uDCB0", desc: "Opening, closing and expenses" },
     { target: "reports", label: "Reports", icon: "\uD83D\uDCC4", desc: "Daily, monthly and custom reports" },
@@ -250,6 +251,7 @@
     [
       ["scan", "New bill", "\uD83D\uDCF3"],
       ["drafts", "Draft bills", "\uD83D\uDCCB"],
+      ["replacement", "Replacement", "\uD83D\uDD01"],
       ["products", "Products", "\uD83D\uDCE6"],
       ["categories", "Categories", "\uD83D\uDDC2\uFE0F"],
       ["inventory", "Inventory", "\uD83D\uDCCA"],
@@ -439,6 +441,19 @@
       draftCard.innerHTML = `<div class="rep-h">\uD83D\uDCCB Draft bills</div>
         <div class="cash-grid"><div><span>Active</span><b class="net">${r.active}</b></div></div>`;
     }).catch(() => { draftCard.remove(); });
+
+    // Today's replacements / refunds.
+    const repCard = el(`<div class="card rep-dash" style="cursor:pointer"><div class="rep-h">\uD83D\uDD01 Replacements</div>
+      <div class="muted sm">Loading\u2026</div></div>`);
+    repCard.onclick = () => go("replacements");
+    s.insertBefore(repCard, draftCard.nextSibling);
+    api.get("/api/replacements/today").then((r) => {
+      repCard.innerHTML = `<div class="rep-h">\uD83D\uDD01 Replacements \u00B7 Today</div>
+        <div class="cash-grid">
+          <div><span>Count</span><b>${r.count}</b></div>
+          <div><span>Refunds</span><b class="net">${money(r.refund_total)}</b></div>
+        </div>`;
+    }).catch(() => { repCard.remove(); });
 
     // Fill stats from the API.
     try {
@@ -1484,6 +1499,7 @@
       <div class="btn-row" style="margin-top:10px">
         <select class="input"><option value="">All categories</option></select>
         <button class="btn ghost sm import-btn" style="width:auto;white-space:nowrap">\u2B07 Import</button>
+        <button class="btn ghost sm export-btn" style="width:auto;white-space:nowrap">\uD83D\uDCC4 Export</button>
         <button class="btn primary sm add-btn" style="width:auto;white-space:nowrap">+ Add</button>
       </div></div>`);
     const listWrap = el(`<div class="list product-grid"></div>`);
@@ -1506,6 +1522,10 @@
     const catSel = head.querySelector("select");
     head.querySelector(".add-btn").onclick = () => go("product");
     head.querySelector(".import-btn").onclick = () => go("import");
+    head.querySelector(".export-btn").onclick = () => {
+      window.open("/api/products/export", "_blank");
+      globalToast("Exporting all products\u2026");
+    };
 
     const cats = await api.get("/api/categories");
     cats.forEach((c) => catSel.appendChild(el(`<option value="${c.id}">${c.category_name}</option>`)));
@@ -1653,6 +1673,252 @@
         btn.disabled = false; btn.textContent = "Import products";
       }
     };
+  });
+
+  // ---- Replacement / Exchange ----------------------------------------------
+  // Searchable product picker (name or barcode) backed by the products API.
+  function productPicker(placeholder) {
+    const box = el(`<div class="pp-wrap">
+      <input class="input pp-input" type="text" inputmode="text" placeholder="${placeholder}"/>
+      <div class="pp-list" hidden></div>
+      <div class="pp-chosen" hidden></div>
+    </div>`);
+    const input = box.querySelector(".pp-input");
+    const list = box.querySelector(".pp-list");
+    const chosen = box.querySelector(".pp-chosen");
+    box.value = null;   // selected product object
+    let t;
+    const clearChoice = () => {
+      box.value = null; chosen.hidden = true; chosen.innerHTML = "";
+      input.hidden = false;
+    };
+    input.oninput = () => {
+      clearTimeout(t);
+      const q = input.value.trim();
+      if (!q) { list.hidden = true; return; }
+      t = setTimeout(async () => {
+        try {
+          const items = await api.get("/api/products?q=" + encodeURIComponent(q));
+          list.innerHTML = "";
+          if (!items.length) { list.hidden = true; return; }
+          items.slice(0, 8).forEach((p) => {
+            const row = el(`<button class="pp-item">
+              <span class="pp-name">${p.product_name}</span>
+              <span class="pp-meta">${p.barcode || ""} \u00B7 ${money(p.selling_price)} \u00B7 stock ${p.quantity}</span>
+            </button>`);
+            row.onclick = (e) => {
+              e.preventDefault();
+              box.value = p;
+              chosen.innerHTML = `<div class="pp-picked"><b>${p.product_name}</b>
+                <span class="muted sm">${money(p.selling_price)} \u00B7 stock ${p.quantity}</span>
+                <button class="btn ghost sm pp-clear" style="width:auto">Change</button></div>`;
+              chosen.hidden = false; input.hidden = true; list.hidden = true;
+              chosen.querySelector(".pp-clear").onclick = (ev) => { ev.preventDefault(); clearChoice(); input.focus(); };
+              box.dispatchEvent(new Event("change"));
+            };
+            list.appendChild(row);
+          });
+          list.hidden = false;
+        } catch (_) { list.hidden = true; }
+      }, 200);
+    };
+    return box;
+  }
+
+  route("replacement", async () => {
+    view.appendChild(topbar("Replacement"));
+    const s = screen();
+    view.appendChild(s);
+
+    const form = el(`<div class="form-narrow">
+      <div class="card">
+        <div class="rep-h">Customer (optional)</div>
+        <div class="field"><label>Customer name</label><input class="input rp-name" type="text" placeholder="e.g. Rajesh"/></div>
+        <div class="field"><label>Mobile number</label><input class="input rp-mobile" type="tel" inputmode="numeric" placeholder="e.g. 98765 43210"/></div>
+        <div class="field"><label>Reason</label><input class="input rp-reason" type="text" placeholder="e.g. Damaged, wrong size"/></div>
+      </div>
+      <div class="card">
+        <div class="rep-h">Returned product</div>
+        <div class="rp-old"></div>
+        <div class="field"><label>Quantity</label><input class="input rp-oldqty" type="number" inputmode="numeric" value="1" min="1"/></div>
+      </div>
+      <div class="card">
+        <div class="rep-h">Replacement product <span class="muted sm">(leave empty for refund only)</span></div>
+        <div class="rp-new"></div>
+        <div class="field"><label>Quantity</label><input class="input rp-newqty" type="number" inputmode="numeric" value="1" min="1"/></div>
+      </div>
+      <div class="card rp-calc">
+        <div class="setting-row"><span class="k">Old product value</span><span class="v rp-oldval">\u20B90.00</span></div>
+        <div class="setting-row"><span class="k">New product value</span><span class="v rp-newval">\u20B90.00</span></div>
+        <div class="setting-row" style="border:none"><span class="k"><b>Difference</b></span><span class="price rp-diff">\u20B90.00</span></div>
+        <div class="rp-msg muted sm" style="margin-top:6px"></div>
+      </div>
+      <button class="btn primary rp-save">Complete replacement</button>
+      <button class="btn ghost rp-hist" style="margin-top:8px">\uD83D\uDCDC Replacement history</button>
+    </div>`);
+    s.appendChild(form);
+
+    const oldPick = productPicker("\uD83D\uDD0D Search returned product (name or barcode)");
+    const newPick = productPicker("\uD83D\uDD0D Search replacement product (optional)");
+    form.querySelector(".rp-old").appendChild(oldPick);
+    form.querySelector(".rp-new").appendChild(newPick);
+
+    const recalc = () => {
+      const oq = Math.max(1, parseInt(form.querySelector(".rp-oldqty").value) || 1);
+      const nq = Math.max(1, parseInt(form.querySelector(".rp-newqty").value) || 1);
+      const oldVal = oldPick.value ? oldPick.value.selling_price * oq : 0;
+      const newVal = newPick.value ? newPick.value.selling_price * nq : 0;
+      const diff = Math.round((newVal - oldVal) * 100) / 100;
+      form.querySelector(".rp-oldval").textContent = money(oldVal);
+      form.querySelector(".rp-newval").textContent = money(newVal);
+      const dEl = form.querySelector(".rp-diff");
+      dEl.textContent = (diff > 0 ? "+" : "") + money(diff);
+      dEl.style.color = diff > 0 ? "#b91c1c" : (diff < 0 ? "#15803d" : "");
+      const msg = form.querySelector(".rp-msg");
+      if (!oldPick.value) msg.textContent = "Choose the returned product to begin.";
+      else if (diff > 0) msg.textContent = `Customer pays ${money(diff)}. A bill will be created.`;
+      else if (diff < 0) msg.textContent = `Refund ${money(-diff)} to the customer \u2014 deducted from the cash drawer.`;
+      else if (newPick.value) msg.textContent = "Even exchange \u2014 nothing to pay.";
+      else msg.textContent = "";
+    };
+    oldPick.addEventListener("change", recalc);
+    newPick.addEventListener("change", recalc);
+    form.querySelector(".rp-oldqty").oninput = recalc;
+    form.querySelector(".rp-newqty").oninput = recalc;
+    recalc();
+
+    form.querySelector(".rp-hist").onclick = () => go("replacements");
+    form.querySelector(".rp-save").onclick = async () => {
+      if (!oldPick.value) { alert("Please choose the returned product."); return; }
+      const oq = Math.max(1, parseInt(form.querySelector(".rp-oldqty").value) || 1);
+      const nq = Math.max(1, parseInt(form.querySelector(".rp-newqty").value) || 1);
+      const oldVal = oldPick.value.selling_price * oq;
+      const newVal = newPick.value ? newPick.value.selling_price * nq : 0;
+      const diff = Math.round((newVal - oldVal) * 100) / 100;
+
+      const body = {
+        returned_product_id: oldPick.value.id,
+        returned_qty: oq,
+        customer_name: form.querySelector(".rp-name").value,
+        mobile: form.querySelector(".rp-mobile").value,
+        reason: form.querySelector(".rp-reason").value,
+      };
+      if (newPick.value) { body.replacement_product_id = newPick.value.id; body.replacement_qty = nq; }
+
+      // Customer owes money -> ask how they're paying (same options as billing).
+      if (diff > 0) {
+        const pay = await new Promise((resolve) => {
+          const m = el(`<div class="modal"><h3>Payment method</h3>
+            <div class="sub">Customer pays ${money(diff)}</div>
+            <div class="pay-grid">
+              <button class="pay-opt" data-m="cash">\uD83D\uDCB5 Cash</button>
+              <button class="pay-opt" data-m="upi">\uD83D\uDCF1 UPI</button>
+              <button class="pay-opt" data-m="card">\uD83D\uDCB3 Card</button>
+              <button class="pay-opt" data-m="split">\u2702\uFE0F Split</button>
+            </div>
+            <button class="btn ghost cancel" style="margin-top:10px">Cancel</button></div>`);
+          const ref = modal(m);
+          m.querySelectorAll(".pay-opt").forEach((b) => (b.onclick = () => { ref.resolve(); resolve(b.dataset.m); }));
+          m.querySelector(".cancel").onclick = () => { ref.resolve(); resolve(null); };
+        });
+        if (!pay) return;
+        body.payment_method = pay;
+        if (pay === "split") {
+          const split = await new Promise((resolve) => {
+            const m = el(`<div class="modal"><h3>Split payment</h3>
+              <div class="sub">Total: ${money(diff)}</div>
+              <div class="field"><label>\uD83D\uDCB5 Cash</label><input class="input sp-cash" type="number" value="0"/></div>
+              <div class="field"><label>\uD83D\uDCF1 UPI</label><input class="input sp-upi" type="number" value="0"/></div>
+              <div class="field"><label>\uD83D\uDCB3 Card</label><input class="input sp-card" type="number" value="0"/></div>
+              <div class="sp-remaining" style="font-weight:700;margin:8px 0"></div>
+              <button class="btn primary sp-ok">Confirm</button>
+              <button class="btn ghost sp-cancel" style="margin-top:8px">Cancel</button></div>`);
+            const ref = modal(m);
+            const get = (c) => parseFloat(m.querySelector(c).value) || 0;
+            const upd = () => {
+              const paid = get(".sp-cash") + get(".sp-upi") + get(".sp-card");
+              const r = Math.round((diff - paid) * 100) / 100;
+              const el2 = m.querySelector(".sp-remaining");
+              el2.textContent = r === 0 ? "\u2713 Balanced" : (r > 0 ? `Remaining: ${money(r)}` : `Over by ${money(-r)}`);
+              el2.style.color = r === 0 ? "#15803d" : "#b91c1c";
+            };
+            m.querySelectorAll("input").forEach((i) => (i.oninput = upd)); upd();
+            m.querySelector(".sp-ok").onclick = () => {
+              const parts = { cash: get(".sp-cash"), upi: get(".sp-upi"), card: get(".sp-card") };
+              if (Math.round((parts.cash + parts.upi + parts.card) * 100) / 100 !== Math.round(diff * 100) / 100) {
+                alert("Payment total does not match the amount due."); return;
+              }
+              ref.resolve(); resolve(parts);
+            };
+            m.querySelector(".sp-cancel").onclick = () => { ref.resolve(); resolve(null); };
+          });
+          if (!split) return;
+          body.payment_split = split;
+        }
+      } else if (diff < 0) {
+        if (!confirm(`Refund ${money(-diff)} to the customer?\n\nThis will be deducted from the cash drawer.`)) return;
+      }
+
+      try {
+        const r = await api.post("/api/replacements", body);
+        const line = r.collected_amount > 0
+          ? `Customer paid ${money(r.collected_amount)}`
+          : (r.refund_amount > 0 ? `Refunded ${money(r.refund_amount)} from cash drawer` : "Even exchange");
+        const m = el(`<div class="modal"><h3>Replacement saved</h3>
+          <div class="sub">${r.replacement_number} \u00B7 ${line}</div>
+          <button class="btn primary rp-pdf">\uD83D\uDCC4 Print receipt</button>
+          <button class="btn ghost rp-done" style="margin-top:8px">Done</button></div>`);
+        const ref = modal(m);
+        m.querySelector(".rp-pdf").onclick = () => window.open(`/api/replacements/${r.id}/pdf`, "_blank");
+        m.querySelector(".rp-done").onclick = () => { ref.resolve(); go("replacement"); };
+      } catch (e) { alert(e.message); }
+    };
+  });
+
+  route("replacements", async () => {
+    view.appendChild(topbar("Replacement history"));
+    const s = screen();
+    view.appendChild(s);
+    const head = el(`<div class="searchbar">
+      <input class="input rh-search" type="text" placeholder="\uD83D\uDD0D Search name, mobile, REP number or product"/>
+    </div>`);
+    const listWrap = el(`<div class="list"></div>`);
+    s.appendChild(head); s.appendChild(listWrap);
+
+    async function load() {
+      const q = head.querySelector(".rh-search").value.trim();
+      const rows = await api.get("/api/replacements" + (q ? "?q=" + encodeURIComponent(q) : ""));
+      listWrap.innerHTML = "";
+      if (!rows.length) { listWrap.appendChild(emptyBlock("\uD83D\uDD01", q ? "No matches." : "No replacements yet.")); return; }
+      rows.forEach((r) => {
+        const settle = r.collected_amount > 0
+          ? `<span style="color:#15803d">Collected ${money(r.collected_amount)}</span>`
+          : (r.refund_amount > 0 ? `<span style="color:#b91c1c">Refunded ${money(r.refund_amount)}</span>` : "Even exchange");
+        const card = el(`<div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div class="name">${r.replacement_number}</div>
+            <div>
+              <button class="btn ghost sm rh-pdf" style="width:auto">\uD83D\uDCC4</button>
+              <button class="btn ghost sm rh-del" style="width:auto;color:#b91c1c">\uD83D\uDDD1</button>
+            </div>
+          </div>
+          <div class="meta">${r.date} ${r.time}${r.customer_name ? " \u00B7 " + r.customer_name : ""}${r.mobile ? " \u00B7 " + r.mobile : ""}</div>
+          <div class="setting-row"><span class="k">Returned</span><span class="v">${r.returned_name} \u00D7${r.returned_qty} \u00B7 ${money(r.old_amount)}</span></div>
+          <div class="setting-row"><span class="k">Replacement</span><span class="v">${r.replacement_name ? r.replacement_name + " \u00D7" + r.replacement_qty + " \u00B7 " + money(r.new_amount) : "\u2014 refund only \u2014"}</span></div>
+          <div class="setting-row" style="border:none"><span class="k">Settlement</span><span class="v">${settle}${r.payment_method ? " \u00B7 " + r.payment_method.toUpperCase() : ""}</span></div>
+        </div>`);
+        card.querySelector(".rh-pdf").onclick = () => window.open(`/api/replacements/${r.id}/pdf`, "_blank");
+        card.querySelector(".rh-del").onclick = async () => {
+          if (!confirm(`Delete ${r.replacement_number}?\n\nStock will be reversed. Bill History is NOT affected.`)) return;
+          try { await api.del("/api/replacements/" + r.id); globalToast("Replacement deleted"); load(); }
+          catch (e) { alert(e.message); }
+        };
+        listWrap.appendChild(card);
+      });
+    }
+    let t;
+    head.querySelector(".rh-search").oninput = () => { clearTimeout(t); t = setTimeout(load, 200); };
+    load();
   });
 
   // ---- Draft (held) bills ---------------------------------------------------

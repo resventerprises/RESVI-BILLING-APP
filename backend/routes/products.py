@@ -219,6 +219,29 @@ def delete_import_batch(batch_id: int):
     })
 
 
+@products_bp.get("/export")
+def export_products():
+    """Download ALL products as Excel (import-compatible)."""
+    import io as _io
+    from datetime import datetime
+
+    from flask import send_file
+
+    from backend.services import product_export_service
+    from backend.services.timezone_util import IST
+
+    include_inactive = request.args.get("include_inactive") == "1"
+    with session_scope() as s:
+        data = product_export_service.build_products_excel(s, include_inactive)
+    stamp = datetime.now(IST).strftime("%Y_%m_%d")
+    return send_file(
+        _io.BytesIO(data),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"RESVI_Products_{stamp}.xlsx",
+    )
+
+
 @products_bp.get("/stats")
 def product_stats():
     """Counts for the Products page and dashboard cards."""

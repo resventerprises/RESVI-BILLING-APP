@@ -23,6 +23,7 @@ def _register_blueprints(app: Flask) -> None:
     from backend.routes.cash import cash_bp
     from backend.routes.categories import categories_bp
     from backend.routes.drafts import drafts_bp
+    from backend.routes.replacements import replacements_bp
     from backend.routes.commerce import billing_bp, sales_bp, scan_bp
     from backend.routes.inventory import inventory_bp
     from backend.routes.products import products_bp
@@ -45,6 +46,7 @@ def _register_blueprints(app: Flask) -> None:
         reports_bp,
         cash_bp,
         drafts_bp,
+        replacements_bp,
     ):
         app.register_blueprint(bp)
 

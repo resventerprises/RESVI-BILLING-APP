@@ -816,3 +816,17 @@ table { border-collapse: collapse; width: 100%; }
   font-size: 11px; font-weight: 700; padding: 2px 8px; margin-left: 6px; vertical-align: middle; }
 .draft-badge[hidden] { display: none; }
 .draft-card .name { font-weight: 700; }
+
+/* ---------- Product picker (replacement) ---------- */
+.pp-wrap { position: relative; margin-bottom: 8px; }
+.pp-list { position: absolute; left: 0; right: 0; top: 100%; z-index: 30; background: #fff;
+  border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow);
+  max-height: 260px; overflow-y: auto; }
+.pp-item { display: block; width: 100%; text-align: left; padding: 10px 12px; border: none;
+  background: none; cursor: pointer; border-bottom: 1px solid var(--border); }
+.pp-item:hover { background: var(--surface-2); }
+.pp-name { display: block; font-weight: 600; font-size: 14px; }
+.pp-meta { display: block; color: var(--muted); font-size: 12px; }
+.pp-picked { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 12px; background: var(--surface-2); border-radius: 12px; }
+.pp-picked b { font-size: 15px; }

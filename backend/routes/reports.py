@@ -77,7 +77,11 @@ def view_report():
     start, end, rtype, label, _ = resolved
     with session_scope() as s:
         data = R._aggregate(s, start, end, **_filters())
+        from backend.services import replacement_service
+        reps = replacement_service.summary_for_range(s, start, end)
         return ok({
+            "replacements": {"count": reps["count"], "refund_total": reps["refund_total"],
+                             "collected_total": reps["collected_total"]},
             "report_type": rtype, "period": label,
             "total_bills": data["total_bills"], "total_items": data["total_items"],
             "gross": round(data["gross"], 2), "discount": round(data["discount"], 2),

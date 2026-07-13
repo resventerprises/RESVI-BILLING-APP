@@ -127,7 +127,12 @@ def _serialize(session: Session, row: CashDrawer) -> dict:
     expense_total = round(sum(e["amount"] for e in expenses), 2)
     # Keep the stored total in sync (covers legacy rows / direct edits).
     expenses_amount = expense_total if expenses else round(row.cash_expenses or 0, 2)
-    expected = round((row.opening_cash or 0) + cash_sales - expenses_amount, 2)
+    # Cash paid back out to customers for returns reduces the drawer.
+    from backend.services import replacement_service
+    refunds = replacement_service.refunds_for_date(session, row.drawer_date)
+    expected = round(
+        (row.opening_cash or 0) + cash_sales - expenses_amount - refunds, 2
+    )
     actual = row.actual_cash
     difference = round((actual - expected), 2) if actual is not None else None
     return {
@@ -136,6 +141,7 @@ def _serialize(session: Session, row: CashDrawer) -> dict:
         "cash_sales": cash_sales,
         "cash_expenses": expenses_amount,
         "expenses": expenses,
+        "refunds": refunds,
         "expected_cash": expected,
         "actual_cash": round(actual, 2) if actual is not None else None,
         "difference": difference,
