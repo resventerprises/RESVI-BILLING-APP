@@ -450,8 +450,10 @@
     api.get("/api/replacements/today").then((r) => {
       repCard.innerHTML = `<div class="rep-h">\uD83D\uDD01 Replacements \u00B7 Today</div>
         <div class="cash-grid">
-          <div><span>Count</span><b>${r.count}</b></div>
-          <div><span>Refunds</span><b class="net">${money(r.refund_total)}</b></div>
+          <div><span>Replacements</span><b>${r.replacement_count}</b></div>
+          <div><span>Refunds</span><b>${r.refund_count}</b></div>
+          <div><span>Refund amount</span><b class="net">${money(r.refund_total)}</b></div>
+          <div><span>Collected</span><b>${money(r.collected_total)}</b></div>
         </div>`;
     }).catch(() => { repCard.remove(); });
 
@@ -1732,6 +1734,13 @@
 
     const form = el(`<div class="form-narrow">
       <div class="card">
+        <div class="mode-toggle">
+          <button class="mode-btn active" data-mode="replacement">\uD83D\uDD01 Replacement</button>
+          <button class="mode-btn" data-mode="refund">\u21A9\uFE0F Refund Only</button>
+        </div>
+        <div class="muted sm mode-hint" style="margin-top:8px">Customer returns a product and takes another one.</div>
+      </div>
+      <div class="card">
         <div class="rep-h">Customer (optional)</div>
         <div class="field"><label>Customer name</label><input class="input rp-name" type="text" placeholder="e.g. Rajesh"/></div>
         <div class="field"><label>Mobile number</label><input class="input rp-mobile" type="tel" inputmode="numeric" placeholder="e.g. 98765 43210"/></div>
@@ -1742,21 +1751,33 @@
         <div class="rp-old"></div>
         <div class="field"><label>Quantity</label><input class="input rp-oldqty" type="number" inputmode="numeric" value="1" min="1"/></div>
       </div>
-      <div class="card">
-        <div class="rep-h">Replacement product <span class="muted sm">(leave empty for refund only)</span></div>
+      <div class="card rp-newcard">
+        <div class="rep-h">Replacement product</div>
         <div class="rp-new"></div>
         <div class="field"><label>Quantity</label><input class="input rp-newqty" type="number" inputmode="numeric" value="1" min="1"/></div>
       </div>
+      <div class="card rp-refundcard" hidden>
+        <div class="rep-h">Refund method</div>
+        <div class="pay-grid">
+          <button class="pay-opt rf-opt active" data-m="cash">\uD83D\uDCB5 Cash</button>
+          <button class="pay-opt rf-opt" data-m="upi">\uD83D\uDCF1 UPI</button>
+          <button class="pay-opt rf-opt" data-m="card">\uD83D\uDCB3 Card</button>
+        </div>
+        <div class="muted sm rf-hint" style="margin-top:8px">Cash refunds are deducted from the cash drawer. UPI/Card refunds are recorded only.</div>
+      </div>
       <div class="card rp-calc">
         <div class="setting-row"><span class="k">Old product value</span><span class="v rp-oldval">\u20B90.00</span></div>
-        <div class="setting-row"><span class="k">New product value</span><span class="v rp-newval">\u20B90.00</span></div>
-        <div class="setting-row" style="border:none"><span class="k"><b>Difference</b></span><span class="price rp-diff">\u20B90.00</span></div>
+        <div class="setting-row rp-newrow"><span class="k">New product value</span><span class="v rp-newval">\u20B90.00</span></div>
+        <div class="setting-row" style="border:none"><span class="k"><b class="rp-difflbl">Difference</b></span><span class="price rp-diff">\u20B90.00</span></div>
         <div class="rp-msg muted sm" style="margin-top:6px"></div>
       </div>
       <button class="btn primary rp-save">Complete replacement</button>
       <button class="btn ghost rp-hist" style="margin-top:8px">\uD83D\uDCDC Replacement history</button>
     </div>`);
     s.appendChild(form);
+
+    let mode = "replacement";     // "replacement" | "refund"
+    let refundMethod = "cash";
 
     const oldPick = productPicker("\uD83D\uDD0D Search returned product (name or barcode)");
     const newPick = productPicker("\uD83D\uDD0D Search replacement product (optional)");
@@ -1767,20 +1788,70 @@
       const oq = Math.max(1, parseInt(form.querySelector(".rp-oldqty").value) || 1);
       const nq = Math.max(1, parseInt(form.querySelector(".rp-newqty").value) || 1);
       const oldVal = oldPick.value ? oldPick.value.selling_price * oq : 0;
-      const newVal = newPick.value ? newPick.value.selling_price * nq : 0;
+      const isRefund = mode === "refund";
+      const newVal = (!isRefund && newPick.value) ? newPick.value.selling_price * nq : 0;
       const diff = Math.round((newVal - oldVal) * 100) / 100;
+
       form.querySelector(".rp-oldval").textContent = money(oldVal);
       form.querySelector(".rp-newval").textContent = money(newVal);
+      form.querySelector(".rp-newrow").hidden = isRefund;
+
       const dEl = form.querySelector(".rp-diff");
-      dEl.textContent = (diff > 0 ? "+" : "") + money(diff);
-      dEl.style.color = diff > 0 ? "#b91c1c" : (diff < 0 ? "#15803d" : "");
+      const lbl = form.querySelector(".rp-difflbl");
       const msg = form.querySelector(".rp-msg");
-      if (!oldPick.value) msg.textContent = "Choose the returned product to begin.";
-      else if (diff > 0) msg.textContent = `Customer pays ${money(diff)}. A bill will be created.`;
-      else if (diff < 0) msg.textContent = `Refund ${money(-diff)} to the customer \u2014 deducted from the cash drawer.`;
-      else if (newPick.value) msg.textContent = "Even exchange \u2014 nothing to pay.";
-      else msg.textContent = "";
+      const refundCard = form.querySelector(".rp-refundcard");
+
+      if (isRefund) {
+        // Refund Only: the whole returned value goes back to the customer.
+        lbl.textContent = "Refund amount";
+        dEl.textContent = money(oldVal);
+        dEl.style.color = "#b91c1c";
+        refundCard.hidden = !oldPick.value;
+        msg.textContent = !oldPick.value ? "Choose the returned product."
+          : (refundMethod === "cash"
+              ? `Refund ${money(oldVal)} in cash \u2014 deducted from the cash drawer.`
+              : `Refund ${money(oldVal)} via ${refundMethod.toUpperCase()} \u2014 recorded only, cash drawer not affected.`);
+      } else {
+        lbl.textContent = "Difference";
+        dEl.textContent = (diff > 0 ? "+" : "") + money(diff);
+        dEl.style.color = diff > 0 ? "#b91c1c" : (diff < 0 ? "#15803d" : "");
+        // A cheaper replacement means money back — ask how it's refunded.
+        refundCard.hidden = !(diff < 0);
+        if (!oldPick.value) msg.textContent = "Choose the returned product to begin.";
+        else if (diff > 0) msg.textContent = `Customer pays ${money(diff)}. A bill will be created.`;
+        else if (diff < 0) msg.textContent = refundMethod === "cash"
+          ? `Refund ${money(-diff)} in cash \u2014 deducted from the cash drawer.`
+          : `Refund ${money(-diff)} via ${refundMethod.toUpperCase()} \u2014 cash drawer not affected.`;
+        else if (newPick.value) msg.textContent = "Even exchange \u2014 nothing to pay.";
+        else msg.textContent = "Choose the replacement product.";
+      }
+      form.querySelector(".rp-save").textContent =
+        isRefund ? "Complete refund" : "Complete replacement";
     };
+
+    // Mode toggle: Replacement <-> Refund Only.
+    form.querySelectorAll(".mode-btn").forEach((b) => {
+      b.onclick = () => {
+        form.querySelectorAll(".mode-btn").forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+        mode = b.dataset.mode;
+        form.querySelector(".rp-newcard").hidden = (mode === "refund");
+        form.querySelector(".mode-hint").textContent = mode === "refund"
+          ? "Customer returns a product and takes nothing in exchange."
+          : "Customer returns a product and takes another one.";
+        recalc();
+      };
+    });
+    // Refund method selector.
+    form.querySelectorAll(".rf-opt").forEach((b) => {
+      b.onclick = () => {
+        form.querySelectorAll(".rf-opt").forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+        refundMethod = b.dataset.m;
+        recalc();
+      };
+    });
+
     oldPick.addEventListener("change", recalc);
     newPick.addEventListener("change", recalc);
     form.querySelector(".rp-oldqty").oninput = recalc;
@@ -1790,11 +1861,17 @@
     form.querySelector(".rp-hist").onclick = () => go("replacements");
     form.querySelector(".rp-save").onclick = async () => {
       if (!oldPick.value) { alert("Please choose the returned product."); return; }
+      const isRefund = mode === "refund";
       const oq = Math.max(1, parseInt(form.querySelector(".rp-oldqty").value) || 1);
       const nq = Math.max(1, parseInt(form.querySelector(".rp-newqty").value) || 1);
       const oldVal = oldPick.value.selling_price * oq;
-      const newVal = newPick.value ? newPick.value.selling_price * nq : 0;
+      const newVal = (!isRefund && newPick.value) ? newPick.value.selling_price * nq : 0;
       const diff = Math.round((newVal - oldVal) * 100) / 100;
+
+      if (!isRefund && !newPick.value) {
+        alert("Choose a replacement product, or switch to \u201CRefund Only\u201D.");
+        return;
+      }
 
       const body = {
         returned_product_id: oldPick.value.id,
@@ -1802,11 +1879,12 @@
         customer_name: form.querySelector(".rp-name").value,
         mobile: form.querySelector(".rp-mobile").value,
         reason: form.querySelector(".rp-reason").value,
+        refund_method: refundMethod,
       };
-      if (newPick.value) { body.replacement_product_id = newPick.value.id; body.replacement_qty = nq; }
+      if (!isRefund) { body.replacement_product_id = newPick.value.id; body.replacement_qty = nq; }
 
       // Customer owes money -> ask how they're paying (same options as billing).
-      if (diff > 0) {
+      if (!isRefund && diff > 0) {
         const pay = await new Promise((resolve) => {
           const m = el(`<div class="modal"><h3>Payment method</h3>
             <div class="sub">Customer pays ${money(diff)}</div>
@@ -1855,16 +1933,25 @@
           if (!split) return;
           body.payment_split = split;
         }
-      } else if (diff < 0) {
-        if (!confirm(`Refund ${money(-diff)} to the customer?\n\nThis will be deducted from the cash drawer.`)) return;
+      } else {
+        // Refund (either mode): confirm, noting whether the drawer is touched.
+        const amt = isRefund ? oldVal : -diff;
+        if (amt > 0) {
+          const where = refundMethod === "cash"
+            ? "This will be deducted from the cash drawer."
+            : `Recorded as a ${refundMethod.toUpperCase()} refund \u2014 the cash drawer is not affected.`;
+          if (!confirm(`Refund ${money(amt)} to the customer?\n\n${where}`)) return;
+        }
       }
 
       try {
         const r = await api.post("/api/replacements", body);
         const line = r.collected_amount > 0
           ? `Customer paid ${money(r.collected_amount)}`
-          : (r.refund_amount > 0 ? `Refunded ${money(r.refund_amount)} from cash drawer` : "Even exchange");
-        const m = el(`<div class="modal"><h3>Replacement saved</h3>
+          : (r.refund_amount > 0
+              ? `Refunded ${money(r.refund_amount)} via ${(r.refund_method || "cash").toUpperCase()}`
+              : "Even exchange");
+        const m = el(`<div class="modal"><h3>${r.txn_type === "REFUND" ? "Refund" : "Replacement"} saved</h3>
           <div class="sub">${r.replacement_number} \u00B7 ${line}</div>
           <button class="btn primary rp-pdf">\uD83D\uDCC4 Print receipt</button>
           <button class="btn ghost rp-done" style="margin-top:8px">Done</button></div>`);
@@ -1881,22 +1968,36 @@
     view.appendChild(s);
     const head = el(`<div class="searchbar">
       <input class="input rh-search" type="text" placeholder="\uD83D\uDD0D Search name, mobile, REP number or product"/>
+      <div class="mode-toggle" style="margin-top:8px">
+        <button class="mode-btn active" data-t="">All</button>
+        <button class="mode-btn" data-t="REPLACEMENT">Replacement</button>
+        <button class="mode-btn" data-t="REFUND">Refund</button>
+      </div>
     </div>`);
     const listWrap = el(`<div class="list"></div>`);
     s.appendChild(head); s.appendChild(listWrap);
+    let typeFilter = "";
 
     async function load() {
       const q = head.querySelector(".rh-search").value.trim();
-      const rows = await api.get("/api/replacements" + (q ? "?q=" + encodeURIComponent(q) : ""));
+      const qs = [];
+      if (q) qs.push("q=" + encodeURIComponent(q));
+      if (typeFilter) qs.push("type=" + typeFilter);
+      const rows = await api.get("/api/replacements" + (qs.length ? "?" + qs.join("&") : ""));
       listWrap.innerHTML = "";
-      if (!rows.length) { listWrap.appendChild(emptyBlock("\uD83D\uDD01", q ? "No matches." : "No replacements yet.")); return; }
+      if (!rows.length) { listWrap.appendChild(emptyBlock("\uD83D\uDD01", q || typeFilter ? "No matches." : "No replacements or refunds yet.")); return; }
       rows.forEach((r) => {
+        const isRefund = r.txn_type === "REFUND";
         const settle = r.collected_amount > 0
           ? `<span style="color:#15803d">Collected ${money(r.collected_amount)}</span>`
-          : (r.refund_amount > 0 ? `<span style="color:#b91c1c">Refunded ${money(r.refund_amount)}</span>` : "Even exchange");
+          : (r.refund_amount > 0
+              ? `<span style="color:#b91c1c">Refunded ${money(r.refund_amount)} \u00B7 ${(r.refund_method || "cash").toUpperCase()}</span>`
+              : "Even exchange");
         const card = el(`<div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center">
-            <div class="name">${r.replacement_number}</div>
+            <div class="name">${r.replacement_number}
+              <span class="pill" style="background:${isRefund ? "#b91c1c" : "var(--primary)"}">${isRefund ? "REFUND" : "REPLACEMENT"}</span>
+            </div>
             <div>
               <button class="btn ghost sm rh-pdf" style="width:auto">\uD83D\uDCC4</button>
               <button class="btn ghost sm rh-del" style="width:auto;color:#b91c1c">\uD83D\uDDD1</button>
@@ -1904,18 +2005,26 @@
           </div>
           <div class="meta">${r.date} ${r.time}${r.customer_name ? " \u00B7 " + r.customer_name : ""}${r.mobile ? " \u00B7 " + r.mobile : ""}</div>
           <div class="setting-row"><span class="k">Returned</span><span class="v">${r.returned_name} \u00D7${r.returned_qty} \u00B7 ${money(r.old_amount)}</span></div>
-          <div class="setting-row"><span class="k">Replacement</span><span class="v">${r.replacement_name ? r.replacement_name + " \u00D7" + r.replacement_qty + " \u00B7 " + money(r.new_amount) : "\u2014 refund only \u2014"}</span></div>
+          ${!isRefund ? `<div class="setting-row"><span class="k">Replacement</span><span class="v">${r.replacement_name} \u00D7${r.replacement_qty} \u00B7 ${money(r.new_amount)}</span></div>` : ""}
           <div class="setting-row" style="border:none"><span class="k">Settlement</span><span class="v">${settle}${r.payment_method ? " \u00B7 " + r.payment_method.toUpperCase() : ""}</span></div>
         </div>`);
         card.querySelector(".rh-pdf").onclick = () => window.open(`/api/replacements/${r.id}/pdf`, "_blank");
         card.querySelector(".rh-del").onclick = async () => {
           if (!confirm(`Delete ${r.replacement_number}?\n\nStock will be reversed. Bill History is NOT affected.`)) return;
-          try { await api.del("/api/replacements/" + r.id); globalToast("Replacement deleted"); load(); }
+          try { await api.del("/api/replacements/" + r.id); globalToast("Deleted"); load(); }
           catch (e) { alert(e.message); }
         };
         listWrap.appendChild(card);
       });
     }
+    head.querySelectorAll(".mode-btn").forEach((b) => {
+      b.onclick = () => {
+        head.querySelectorAll(".mode-btn").forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+        typeFilter = b.dataset.t;
+        load();
+      };
+    });
     let t;
     head.querySelector(".rh-search").oninput = () => { clearTimeout(t); t = setTimeout(load, 200); };
     load();

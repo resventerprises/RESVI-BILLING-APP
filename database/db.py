@@ -94,6 +94,9 @@ def _ensure_columns() -> None:
         "import_batches": [
             ("status", "VARCHAR(16) NOT NULL DEFAULT 'active'"),
         ],
+        "replacement": [
+            ("refund_method", "VARCHAR(16)"),
+        ],
     }
     inspector = inspect(engine)
     existing_tables = set(inspector.get_table_names())

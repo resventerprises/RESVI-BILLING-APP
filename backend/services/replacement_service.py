@@ -56,6 +56,8 @@ def _serialize(r: Replacement) -> dict:
         "difference": round(r.difference or 0, 2),
         "collected_amount": round(r.collected_amount or 0, 2),
         "refund_amount": round(r.refund_amount or 0, 2),
+        "refund_method": r.refund_method or "",
+        "txn_type": "REFUND" if r.kind == "REFUND_ONLY" else "REPLACEMENT",
         "payment_method": r.payment_method or "",
         "payment_breakdown": breakdown,
         "bill_id": r.bill_id,
@@ -75,6 +77,7 @@ def create_replacement(
     reason: str | None = None,
     payment_method: str = "cash",
     payment_split: dict | None = None,
+    refund_method: str = "cash",
 ) -> dict:
     from backend.services import billing_service
 
@@ -159,7 +162,8 @@ def create_replacement(
         difference=difference,
         collected_amount=collected,
         refund_amount=refund,
-        payment_method=(payment_method if collected > 0 else ("cash" if refund > 0 else None)),
+        refund_method=(refund_method or "cash").lower() if refund > 0 else None,
+        payment_method=(payment_method if collected > 0 else None),
         payment_breakdown=breakdown_json,
         bill_id=bill.id if bill else None,
         kind=kind,
@@ -169,8 +173,14 @@ def create_replacement(
     return _serialize(r)
 
 
-def list_replacements(session: Session, term: str | None = None, limit: int = 200) -> list[dict]:
+def list_replacements(session: Session, term: str | None = None, limit: int = 200,
+                      txn_type: str | None = None) -> list[dict]:
     stmt = select(Replacement)
+    # txn_type: ALL | REPLACEMENT | REFUND
+    if txn_type and txn_type.upper() == "REFUND":
+        stmt = stmt.where(Replacement.kind == "REFUND_ONLY")
+    elif txn_type and txn_type.upper() == "REPLACEMENT":
+        stmt = stmt.where(Replacement.kind == "EXCHANGE")
     if term:
         like = f"%{term.strip()}%"
         stmt = stmt.where(
@@ -221,7 +231,8 @@ def _utc_window_for_ist_date(drawer_date: str) -> tuple[datetime, datetime]:
 
 
 def refunds_for_date(session: Session, drawer_date: str) -> float:
-    """Total CASH refunded on an IST date — deducted from the cash drawer."""
+    """Total CASH refunded on an IST date — the only refunds that reduce the
+    drawer. UPI/card refunds go back through the bank and are excluded."""
     start, end = _utc_window_for_ist_date(drawer_date)
     rows = session.scalars(
         select(Replacement).where(
@@ -232,6 +243,8 @@ def refunds_for_date(session: Session, drawer_date: str) -> float:
     for r in rows:
         if ist_date_key(r.created_at) != drawer_date:
             continue
+        if (r.refund_method or "cash").lower() != "cash":
+            continue  # UPI / card refund — bank, not drawer
         total += float(r.refund_amount or 0)
     return round(total, 2)
 
@@ -243,9 +256,16 @@ def summary_for_range(session: Session, start: datetime, end: datetime) -> dict:
             Replacement.created_at >= start, Replacement.created_at <= end
         )
     ).all()
+    exchanges = [r for r in rows if r.kind == "EXCHANGE"]
+    refunds = [r for r in rows if r.kind == "REFUND_ONLY"]
     return {
         "count": len(rows),
+        "replacement_count": len(exchanges),
+        "refund_count": len(refunds),
         "refund_total": round(sum(float(r.refund_amount or 0) for r in rows), 2),
+        "cash_refund_total": round(
+            sum(float(r.refund_amount or 0) for r in rows
+                if (r.refund_method or "cash").lower() == "cash"), 2),
         "collected_total": round(sum(float(r.collected_amount or 0) for r in rows), 2),
         "items": [_serialize(r) for r in rows],
     }
@@ -262,6 +282,8 @@ def today_stats(session: Session) -> dict:
     rows = [r for r in rows if ist_date_key(r.created_at) == key]
     return {
         "count": len(rows),
+        "replacement_count": len([r for r in rows if r.kind == "EXCHANGE"]),
+        "refund_count": len([r for r in rows if r.kind == "REFUND_ONLY"]),
         "refund_total": round(sum(float(r.refund_amount or 0) for r in rows), 2),
         "collected_total": round(sum(float(r.collected_amount or 0) for r in rows), 2),
     }

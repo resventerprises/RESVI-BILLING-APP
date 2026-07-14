@@ -308,6 +308,9 @@ class Replacement(Base):
     difference: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)   # new - old
     collected_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     refund_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    # How the refund was paid out. ONLY "cash" reduces the cash drawer; UPI/card
+    # refunds go back through the bank and are recorded but not deducted.
+    refund_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
     payment_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
     payment_breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)
 

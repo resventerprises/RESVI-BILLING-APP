@@ -16,8 +16,9 @@ replacements_bp = Blueprint("replacements", __name__, url_prefix="/api/replaceme
 @replacements_bp.get("")
 def list_all():
     term = request.args.get("q")
+    txn_type = request.args.get("type")   # ALL | REPLACEMENT | REFUND
     with session_scope() as s:
-        return ok(replacement_service.list_replacements(s, term))
+        return ok(replacement_service.list_replacements(s, term, txn_type=txn_type))
 
 
 @replacements_bp.get("/today")
@@ -47,6 +48,7 @@ def create():
                 reason=body.get("reason"),
                 payment_method=body.get("payment_method") or "cash",
                 payment_split=body.get("payment_split"),
+                refund_method=body.get("refund_method") or "cash",
             )
         return ok(r, status=201)
     except ValidationError as exc:

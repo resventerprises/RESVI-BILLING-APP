@@ -31,7 +31,10 @@ def build_receipt(r: dict) -> bytes:
                             title=r["replacement_number"])
     story = [
         Paragraph("RESVI ENTERPRISES", brand),
-        Paragraph("Replacement / Exchange Receipt", sub),
+        Paragraph(
+            "Refund Receipt" if r.get("txn_type") == "REFUND" else "Replacement / Exchange Receipt",
+            sub,
+        ),
         Paragraph(
             f"{r['replacement_number']} &nbsp;|&nbsp; {r['date']} {r['time']}", small
         ),
@@ -88,7 +91,12 @@ def build_receipt(r: dict) -> bytes:
         srows.append(["Payment method", (r.get("payment_method") or "").upper()])
     elif r["refund_amount"] > 0:
         srows.append(["Refunded to customer", _rs(r["refund_amount"])])
-        srows.append(["Paid from", "CASH DRAWER"])
+        method = (r.get("refund_method") or "cash").upper()
+        srows.append(["Refund method", method])
+        srows.append([
+            "Paid from",
+            "CASH DRAWER" if method == "CASH" else f"{method} (bank)",
+        ])
     else:
         srows.append(["Settlement", "Even exchange \u2014 nothing to pay"])
     t = Table(srows, colWidths=[60 * mm, 62 * mm])
