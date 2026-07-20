@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.14.0-refund-methods"  # unified replacement/refund modes; only cash refunds hit the drawer
+APP_VERSION: str = "1.14.1-refund-display"  # show Cash Refunds row in dashboard, drawer screen, close dialog, history, PDF
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

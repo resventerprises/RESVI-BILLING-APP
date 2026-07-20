@@ -228,6 +228,8 @@ def build_report_pdf(data: dict, *, report_type: str, period_label: str,
         crows.append(["Opening Cash", _rupees(cash.get("opening_cash", 0))])
         crows.append(["Cash Sales", _rupees(cash.get("cash_sales", 0))])
         crows.append(["Cash Expenses", _rupees(cash.get("cash_expenses", 0))])
+        if cash.get("refunds", 0):
+            crows.append(["Cash Refunds", f"-{_rupees(cash.get('refunds', 0))}"])
         crows.append(["Expected Cash", _rupees(cash.get("expected_cash", 0))])
         if cash.get("actual_cash") is not None:
             crows.append(["Actual Cash", _rupees(cash.get("actual_cash", 0))])

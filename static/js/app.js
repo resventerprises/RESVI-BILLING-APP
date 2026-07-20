@@ -423,11 +423,14 @@
     cashCard.onclick = () => go("cash");
     s.insertBefore(cashCard, quick.previousSibling || quick);
     api.get("/api/cash/status").then((cd) => {
+      const refRow = (cd.refunds > 0)
+        ? `<div><span>Cash Refunds</span><b style="color:#b91c1c">-${money(cd.refunds)}</b></div>` : "";
       cashCard.innerHTML = `<div class="rep-h">\uD83D\uDCB0 Cash Drawer \u00B7 Today</div>
         <div class="cash-grid">
           <div><span>Opening</span><b>${money(cd.opening_cash)}</b></div>
           <div><span>Cash Sales</span><b>${money(cd.cash_sales)}</b></div>
           <div><span>Expenses</span><b>${money(cd.cash_expenses)}</b></div>
+          ${refRow}
           <div><span>Expected</span><b class="net">${money(cd.expected_cash)}</b></div>
         </div>`;
     }).catch(() => { cashCard.remove(); });
@@ -2100,6 +2103,7 @@
       <div class="setting-row"><span class="k">Opening Cash</span><span class="v">${money(st.opening_cash)}</span></div>
       <div class="setting-row"><span class="k">Today's CASH Sales</span><span class="v">${money(st.cash_sales)}</span></div>
       <div class="setting-row"><span class="k">Total Cash Expenses</span><span class="v">${money(st.cash_expenses)}</span></div>
+      ${st.refunds > 0 ? `<div class="setting-row"><span class="k">Cash Refunds</span><span class="v" style="color:#b91c1c">-${money(st.refunds)}</span></div>` : ""}
       <div class="setting-row"><span class="k"><b>Expected in Drawer</b></span><span class="price">${money(st.expected_cash)}</span></div>
       ${st.actual_cash != null ? `<div class="setting-row"><span class="k">Actual Counted</span><span class="v">${money(st.actual_cash)}</span></div>
         <div class="setting-row" style="border:none"><span class="k">Difference</span><span class="v" style="color:${st.difference < 0 ? "#b91c1c" : "#15803d"}">${st.difference > 0 ? "+" : ""}${money(st.difference)}</span></div>` : ""}
@@ -2164,6 +2168,7 @@
           <div class="setting-row"><span class="k">Cash Sales</span><span class="v">${money(h.cash_sales)}</span></div>
           <div class="setting-row"><span class="k">Expenses</span><span class="v">${money(h.cash_expenses)}</span></div>
           ${(h.expenses && h.expenses.length) ? h.expenses.map((e) => `<div class="setting-row" style="padding-left:12px"><span class="k muted sm">\u2022 ${e.description}</span><span class="v sm">${money(e.amount)}</span></div>`).join("") : ""}
+          ${h.refunds > 0 ? `<div class="setting-row"><span class="k">Cash Refunds</span><span class="v" style="color:#b91c1c">-${money(h.refunds)}</span></div>` : ""}
           <div class="setting-row"><span class="k">Expected</span><span class="v">${money(h.expected_cash)}</span></div>
           ${h.actual_cash != null ? `<div class="setting-row"><span class="k">Actual</span><span class="v">${money(h.actual_cash)}</span></div>
             <div class="setting-row"><span class="k">Difference</span><span class="v" style="color:${diffColor}">${h.difference > 0 ? "+" : ""}${money(h.difference)}</span></div>
@@ -2203,6 +2208,7 @@
       <div class="setting-row"><span class="k">Today's Cash Sales</span><span class="v">${money(st.cash_sales)}</span></div>
       <div class="setting-row"><span class="k">Opening Cash</span><span class="v">${money(st.opening_cash)}</span></div>
       <div class="setting-row"><span class="k">Total Cash Expenses</span><span class="v">${money(st.cash_expenses)}</span></div>
+      ${st.refunds > 0 ? `<div class="setting-row"><span class="k">Cash Refunds</span><span class="v" style="color:#b91c1c">-${money(st.refunds)}</span></div>` : ""}
       <div class="setting-row"><span class="k"><b>Expected in Drawer</b></span><span class="v">${money(st.expected_cash)}</span></div>
       <div class="field"><label>Actual Cash Counted</label><input class="input cl-actual" type="number" inputmode="decimal" placeholder="Count the drawer"/></div>
       <div class="cl-diff" style="font-weight:700;margin:6px 0"></div>
