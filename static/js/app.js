@@ -1737,13 +1737,6 @@
 
     const form = el(`<div class="form-narrow">
       <div class="card">
-        <div class="mode-toggle">
-          <button class="mode-btn active" data-mode="replacement">\uD83D\uDD01 Replacement</button>
-          <button class="mode-btn" data-mode="refund">\u21A9\uFE0F Refund Only</button>
-        </div>
-        <div class="muted sm mode-hint" style="margin-top:8px">Customer returns a product and takes another one.</div>
-      </div>
-      <div class="card">
         <div class="rep-h">Customer (optional)</div>
         <div class="field"><label>Customer name</label><input class="input rp-name" type="text" placeholder="e.g. Rajesh"/></div>
         <div class="field"><label>Mobile number</label><input class="input rp-mobile" type="tel" inputmode="numeric" placeholder="e.g. 98765 43210"/></div>
@@ -1759,9 +1752,16 @@
         <div class="rp-new"></div>
         <div class="field"><label>Quantity</label><input class="input rp-newqty" type="number" inputmode="numeric" value="1" min="1"/></div>
       </div>
+      <div class="rp-refundtoggle" style="margin-bottom:12px">
+        <button class="btn ghost rp-toggle" style="width:100%">\u21A9\uFE0F Refund Only \u2014 no replacement</button>
+        <div class="muted sm" style="text-align:center;margin-top:6px">Customer returns a product and takes only the money back.</div>
+      </div>
       <div class="card rp-refundcard" hidden>
-        <div class="rep-h">Refund method</div>
-        <div class="pay-grid">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="rep-h" style="margin:0">Refund method</div>
+          <button class="btn ghost sm rp-cancelrefund" style="width:auto">\u2715 Cancel refund</button>
+        </div>
+        <div class="pay-grid" style="margin-top:10px">
           <button class="pay-opt rf-opt active" data-m="cash">\uD83D\uDCB5 Cash</button>
           <button class="pay-opt rf-opt" data-m="upi">\uD83D\uDCF1 UPI</button>
           <button class="pay-opt rf-opt" data-m="card">\uD83D\uDCB3 Card</button>
@@ -1809,7 +1809,7 @@
         lbl.textContent = "Refund amount";
         dEl.textContent = money(oldVal);
         dEl.style.color = "#b91c1c";
-        refundCard.hidden = !oldPick.value;
+        refundCard.hidden = !oldPick.value;   // show method chooser once product picked
         msg.textContent = !oldPick.value ? "Choose the returned product."
           : (refundMethod === "cash"
               ? `Refund ${money(oldVal)} in cash \u2014 deducted from the cash drawer.`
@@ -1818,7 +1818,7 @@
         lbl.textContent = "Difference";
         dEl.textContent = (diff > 0 ? "+" : "") + money(diff);
         dEl.style.color = diff > 0 ? "#b91c1c" : (diff < 0 ? "#15803d" : "");
-        // A cheaper replacement means money back — ask how it's refunded.
+        // A cheaper replacement means money back — show the refund-method chooser.
         refundCard.hidden = !(diff < 0);
         if (!oldPick.value) msg.textContent = "Choose the returned product to begin.";
         else if (diff > 0) msg.textContent = `Customer pays ${money(diff)}. A bill will be created.`;
@@ -1832,19 +1832,23 @@
         isRefund ? "Complete refund" : "Complete replacement";
     };
 
-    // Mode toggle: Replacement <-> Refund Only.
-    form.querySelectorAll(".mode-btn").forEach((b) => {
-      b.onclick = () => {
-        form.querySelectorAll(".mode-btn").forEach((x) => x.classList.remove("active"));
-        b.classList.add("active");
-        mode = b.dataset.mode;
-        form.querySelector(".rp-newcard").hidden = (mode === "refund");
-        form.querySelector(".mode-hint").textContent = mode === "refund"
-          ? "Customer returns a product and takes nothing in exchange."
-          : "Customer returns a product and takes another one.";
-        recalc();
-      };
-    });
+    const setMode = (m) => {
+      mode = m;
+      const isRefund = m === "refund";
+      // Refund Only hides the replacement product card; the toggle turns into
+      // an active state, and a Cancel button (inside the refund card) returns.
+      form.querySelector(".rp-newcard").hidden = isRefund;
+      form.querySelector(".rp-refundtoggle").hidden = isRefund;
+      const tgl = form.querySelector(".rp-toggle");
+      tgl.classList.toggle("active", isRefund);
+      if (isRefund) { newPick.value = null; }   // clear any replacement selection
+      recalc();
+    };
+
+    // "Refund Only" toggle — reveals the refund flow on the same page.
+    form.querySelector(".rp-toggle").onclick = () => setMode("refund");
+    form.querySelector(".rp-cancelrefund").onclick = () => setMode("replacement");
+
     // Refund method selector.
     form.querySelectorAll(".rf-opt").forEach((b) => {
       b.onclick = () => {

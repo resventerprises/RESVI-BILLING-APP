@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.14.1-refund-display"  # show Cash Refunds row in dashboard, drawer screen, close dialog, history, PDF
+APP_VERSION: str = "1.14.2-refund-inline-toggle"  # single replacement page with inline Refund Only toggle (no separate tabs)
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

@@ -837,3 +837,6 @@ table { border-collapse: collapse; width: 100%; }
   font-weight: 600; font-size: 14px; cursor: pointer; color: var(--muted); }
 .mode-btn.active { background: #fff; color: var(--text); box-shadow: var(--shadow); }
 .pay-opt.active { border-color: var(--primary); background: var(--surface-2); font-weight: 700; }
+
+/* ---------- Refund Only toggle (inline, single page) ---------- */
+.rp-toggle.active { border-color: var(--primary); background: var(--surface-2); color: var(--primary); font-weight: 700; }
