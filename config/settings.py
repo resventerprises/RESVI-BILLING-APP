@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.17.1-import-reactivate"  # re-import reactivates archived products (fix 181/275 bug)
+APP_VERSION: str = "1.17.2-delete-history-safe"  # deleting import history no longer archives/deletes products
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

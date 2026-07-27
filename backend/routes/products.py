@@ -204,43 +204,35 @@ def download_import_file(batch_id: int):
 
 @products_bp.delete("/import/history/<int:batch_id>")
 def delete_import_batch(batch_id: int):
-    """Archive an import without breaking sales history.
+    """Delete ONLY the import-history record.
 
-    Products from this import that appear on any bill are ARCHIVED
-    (status=inactive) so bills/bill_items/reports stay intact. Products never
-    sold are safely hard-deleted to keep the catalogue clean. The import batch
-    itself is marked deleted. Bills and bill items are never touched.
+    Deleting an import-history entry must never change product status or remove
+    products — the products the shop imported stay exactly as they are (active,
+    on the shelf, in bills). We simply unlink them from the deleted batch record
+    and drop the history row. Bills, stock, and status are all left untouched.
     """
-    from database.models import BillItem, ImportBatch, Product, Status
+    from database.models import ImportBatch, Product
 
     with session_scope() as s:
         batch = s.get(ImportBatch, batch_id)
         if not batch:
             return error("not_found", "Import not found.", status=404)
 
-        prods = s.query(Product).filter(Product.import_batch_id == batch_id).all()
-        archived = 0
-        deleted = 0
-        for p in prods:
-            in_a_bill = s.query(BillItem.id).filter(BillItem.product_id == p.id).first() is not None
-            if in_a_bill:
-                p.status = Status.INACTIVE       # archive: hidden everywhere, bill history safe
-                archived += 1
-            else:
-                # Never sold -> safe to remove; clear its images/embeddings first.
-                from database.models import ProductEmbedding, ProductImage
-                s.query(ProductEmbedding).filter(ProductEmbedding.product_id == p.id).delete()
-                s.query(ProductImage).filter(ProductImage.product_id == p.id).delete()
-                s.delete(p)
-                deleted += 1
-
-        batch.status = "deleted"
+        # Unlink products from this batch record, but DO NOT touch their status,
+        # stock, images, or bills. They remain active products in the catalogue.
+        unlinked = (
+            s.query(Product)
+            .filter(Product.import_batch_id == batch_id)
+            .update({Product.import_batch_id: None}, synchronize_session=False)
+        )
+        # Remove the history record entirely.
+        s.delete(batch)
 
     return ok({
         "ok": True,
-        "message": "Import archived successfully",
-        "archived_products": archived,
-        "deleted_products": deleted,
+        "message": "Import history deleted",
+        "removed": 0,
+        "unlinked_products": unlinked,
     })
 
 

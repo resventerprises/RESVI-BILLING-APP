@@ -2514,10 +2514,10 @@
           } catch (e) { alert("Could not download the file."); }
         };
         row.querySelector(".ih-del").onclick = async () => {
-          if (!confirm("Are you sure you want to delete this import history?")) return;
+          if (!confirm("Are you sure you want to delete this import history?\n\nThis removes only the history record. Your products stay active and untouched.")) return;
           try {
-            const r = await api.del("/api/products/import/history/" + b.id);
-            globalToast(`Removed ${r.removed} products`);
+            await api.del("/api/products/import/history/" + b.id);
+            globalToast("Import history deleted");
             load();
           } catch (e) { alert(e.message); }
         };
