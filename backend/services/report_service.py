@@ -93,17 +93,57 @@ def _aggregate(session: Session, start: datetime, end: datetime, *,
     # Product-wise totals (qty + revenue) across the kept bills.
     prod_qty: dict[str, int] = defaultdict(int)
     prod_rev: dict[str, float] = defaultdict(float)
+    # Category-wise totals + each category's own product breakdown.
+    cat_qty: dict[str, int] = defaultdict(int)
+    cat_rev: dict[str, float] = defaultdict(float)
+    cat_products: dict[str, dict] = defaultdict(lambda: {"qty": defaultdict(int), "rev": defaultdict(float)})
+    _cat_name_cache: dict[int, str] = {}
+
+    def _category_name(cat_id):
+        if cat_id is None:
+            return "Uncategorized"
+        if cat_id not in _cat_name_cache:
+            cat = repo.categories.get(session, cat_id)
+            _cat_name_cache[cat_id] = (cat.category_name if cat else "Uncategorized")
+        return _cat_name_cache[cat_id]
+
     for b in bills:
         for it in b.items:
             if it.product_id is not None:
                 p = repo.products.get(session, it.product_id)
                 name = p.product_name if p else "(deleted product)"
+                cname = _category_name(p.category_id) if p else "Uncategorized"
             else:
                 name = it.item_name or "(manual item)"
-            prod_qty[name] += it.quantity or 0
-            prod_rev[name] += it.total_price or 0
+                cname = "Manual / Other"
+            qty = it.quantity or 0
+            rev = it.total_price or 0
+            prod_qty[name] += qty
+            prod_rev[name] += rev
+            cat_qty[cname] += qty
+            cat_rev[cname] += rev
+            cat_products[cname]["qty"][name] += qty
+            cat_products[cname]["rev"][name] += rev
     top = sorted(prod_qty.keys(), key=lambda n: prod_qty[n], reverse=True)
     top_products = [(n, prod_qty[n], prod_rev[n]) for n in top]
+
+    # Rank categories by revenue; compute each one's % of total and its products.
+    total_rev_for_pct = sum(cat_rev.values()) or 0
+    ranked_cats = sorted(cat_rev.keys(), key=lambda c: cat_rev[c], reverse=True)
+    top_categories = []
+    for cname in ranked_cats:
+        prods = cat_products[cname]
+        prod_list = sorted(prods["qty"].keys(), key=lambda n: prods["rev"][n], reverse=True)
+        top_categories.append({
+            "name": cname,
+            "qty": cat_qty[cname],
+            "revenue": round(cat_rev[cname], 2),
+            "percent": round((cat_rev[cname] / total_rev_for_pct * 100), 1) if total_rev_for_pct else 0.0,
+            "products": [
+                {"name": n, "qty": prods["qty"][n], "revenue": round(prods["rev"][n], 2)}
+                for n in prod_list
+            ],
+        })
 
     # Daily breakdown (for monthly/range reports).
     by_day: dict[date, float] = defaultdict(float)
@@ -116,6 +156,7 @@ def _aggregate(session: Session, start: datetime, end: datetime, *,
         "total_bills": total_bills, "total_items": total_items,
         "gross": gross, "discount": discount, "net": net,
         "pay": pay, "top_products": top_products, "daily": daily,
+        "top_categories": top_categories,
         "cash_sales": cash_sales, "online_sales": online_sales,
     }
 
@@ -187,6 +228,21 @@ def build_report_pdf(data: dict, *, report_type: str, period_label: str,
         rows = [["Date", "Net Sales"]]
         rows += [[d.strftime("%d %b"), _rupees(v)] for d, v in data["daily"]]
         story.append(_header_table(rows, [90 * mm, 80 * mm], {1: "RIGHT"}))
+
+    # Top Selling Categories (new section, above products).
+    cats = data.get("top_categories") or []
+    if cats:
+        story.append(Paragraph("Top Selling Categories", S["sec"]))
+        rows = [["Rank", "Category", "Qty Sold", "Revenue", "% of Sales"]]
+        for i, cat in enumerate(cats, 1):
+            rows.append([
+                f"#{i}", cat["name"], str(cat["qty"]),
+                _rupees(cat["revenue"]), f"{cat['percent']}%",
+            ])
+        story.append(_header_table(
+            rows, [16 * mm, 62 * mm, 26 * mm, 40 * mm, 26 * mm],
+            {2: "RIGHT", 3: "RIGHT", 4: "RIGHT"},
+        ))
 
     story.append(Paragraph("Top Selling Products", S["sec"]))
     if data["top_products"]:
@@ -284,6 +340,26 @@ def build_report_excel(data: dict, *, report_type: str, period_label: str) -> by
             ist_time_str(b.bill_date),
             b.total_items or 0, round(b.grand_total or 0, 2),
         ])
+
+    # Top Selling Categories sheet (new).
+    cats = data.get("top_categories") or []
+    if cats:
+        wb_cat = wb.create_sheet("Top Categories")
+        wb_cat.append(["Rank", "Category", "Qty Sold", "Revenue", "% of Sales"])
+        for c in wb_cat[1]:
+            c.fill = head_fill; c.font = head_font
+        for i, cat in enumerate(cats, 1):
+            wb_cat.append([f"#{i}", cat["name"], cat["qty"], cat["revenue"], f"{cat['percent']}%"])
+        # A second block: each category's product breakdown.
+        wb_cat.append([])
+        wb_cat.append(["Category", "Product", "Qty", "Revenue"])
+        for c in wb_cat[wb_cat.max_row]:
+            c.fill = head_fill; c.font = head_font
+        for cat in cats:
+            for p in cat["products"]:
+                wb_cat.append([cat["name"], p["name"], p["qty"], p["revenue"]])
+        for col, w in zip("ABCDE", [8, 28, 12, 14, 12]):
+            wb_cat.column_dimensions[col].width = w
 
     wb_prod = wb.create_sheet("Products")
     wb_prod.append(["Product Name", "Qty Sold", "Revenue"])

@@ -90,6 +90,7 @@ def view_report():
             "cash_sales": data.get("cash_sales", 0), "online_sales": data.get("online_sales", 0),
             "top_products": [{"name": n, "qty": q, "revenue": round(r, 2)}
                              for n, q, r in data["top_products"][:10]],
+            "top_categories": data.get("top_categories", []),
             "daily": [{"date": d.strftime("%d %b"), "amount": round(v, 2)} for d, v in data["daily"]],
             "bills": [{"bill_number": b.bill_number,
                        "date": ist_date_str(b.bill_date),

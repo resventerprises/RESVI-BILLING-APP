@@ -2418,6 +2418,22 @@
               <div><span>Net Sales</span><b class="net">${money(r.net)}</b></div>
             </div>
           </div>
+          ${(r.top_categories && r.top_categories.length) ? `<div class="card"><div class="rep-h">Top Selling Categories</div>
+            ${r.top_categories.map((cat, i) => `
+              <div class="cat-row" data-cat="${i}">
+                <div class="cat-head">
+                  <span class="cat-rank">#${i + 1}</span>
+                  <span class="cat-name">${cat.name}</span>
+                  <span class="cat-rev">${money(cat.revenue)}</span>
+                  <span class="cat-caret">\u25BC</span>
+                </div>
+                <div class="cat-sub">Products sold: ${cat.qty} \u00B7 ${cat.percent}% of sales</div>
+                <div class="cat-bar"><div class="cat-bar-fill" style="width:${Math.max(2, cat.percent)}%"></div></div>
+                <div class="cat-products" hidden>
+                  ${cat.products.map((p, j) => `<div class="rep-row" style="padding-left:12px"><span>${j + 1}. ${p.name}</span><span>Qty ${p.qty} \u00B7 ${money(p.revenue)}</span></div>`).join("")}
+                </div>
+              </div>`).join("")}
+          </div>` : ""}
           ${r.top_products.length ? `<div class="card"><div class="rep-h">Top Products</div>
             ${r.top_products.map((p) => `<div class="rep-row"><span>${p.name}</span><span>${p.qty} \u00B7 ${money(p.revenue)}</span></div>`).join("")}</div>` : ""}
           <div class="card"><div class="rep-h">Payment Summary</div>
@@ -2429,6 +2445,14 @@
           </div>
           ${r.bills.length ? `<div class="card"><div class="rep-h">Bills (${r.bills.length})</div>
             ${r.bills.map((b) => `<div class="rep-row"><span>${b.bill_number} \u00B7 ${b.time}</span><span>${b.items} items \u00B7 ${money(b.amount)}</span></div>`).join("")}</div>` : `<div class="empty">No bills in this period.</div>`}`;
+        // Clicking a category row expands its product breakdown.
+        out.querySelectorAll(".cat-row").forEach((row) => {
+          row.querySelector(".cat-head").onclick = () => {
+            const prods = row.querySelector(".cat-products");
+            prods.hidden = !prods.hidden;
+            row.classList.toggle("open", !prods.hidden);
+          };
+        });
       } catch (e) { out.innerHTML = `<div class="msg">${e.message}</div>`; }
     };
     renderFields();

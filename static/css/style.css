@@ -846,3 +846,17 @@ table { border-collapse: collapse; width: 100%; }
 .src-btn { flex: 1; padding: 7px 8px; border: none; background: transparent; border-radius: 7px;
   font-weight: 600; font-size: 13px; cursor: pointer; color: var(--muted); }
 .src-btn.active { background: #fff; color: var(--text); box-shadow: var(--shadow); }
+
+/* ---------- Top Selling Categories ---------- */
+.cat-row { border-bottom: 1px solid var(--border); padding: 10px 0; }
+.cat-row:last-child { border-bottom: none; }
+.cat-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.cat-rank { font-weight: 800; color: var(--primary); min-width: 32px; }
+.cat-name { font-weight: 600; flex: 1; }
+.cat-rev { font-weight: 700; }
+.cat-caret { color: var(--muted); font-size: 11px; transition: transform .15s; }
+.cat-row.open .cat-caret { transform: rotate(180deg); }
+.cat-sub { color: var(--muted); font-size: 12px; margin: 4px 0 6px 40px; }
+.cat-bar { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin-left: 40px; }
+.cat-bar-fill { height: 100%; background: linear-gradient(90deg, var(--primary), #14b8a6); border-radius: 999px; }
+.cat-products { margin-top: 8px; }

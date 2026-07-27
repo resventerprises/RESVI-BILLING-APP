@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.15.0-manual-products"  # manual product entry for replacement/refund (existing or manual, per slot)
+APP_VERSION: str = "1.16.0-top-categories"  # Top Selling Categories analytics in reports (UI, PDF, Excel)
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 
