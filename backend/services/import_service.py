@@ -186,7 +186,6 @@ def import_products(session: Session, recognizer, file_bytes: bytes,
 
     for i, raw in enumerate(rows[1:], start=2):
         if raw is None or all(_norm(c) == "" for c in raw):
-            skipped += 1
             continue  # blank line
         barcode = cell(raw, "barcode")
         name = cell(raw, "product_name")
@@ -315,25 +314,6 @@ def import_products(session: Session, recognizer, file_bytes: bytes,
             entry["status"] = "failed"
             entry["error"] = str(exc)
             report.append(entry)
-
-    from sqlalchemy import func
-
-    active = session.query(func.count(Product.id)).filter(
-        Product.status == Status.ACTIVE
-    ).scalar()
-
-    inactive = session.query(func.count(Product.id)).filter(
-        Product.status == Status.INACTIVE
-    ).scalar()
-
-    print("=" * 60)
-    print("AFTER IMPORT")
-    print("CREATED :", created)
-    print("UPDATED :", updated)
-    print("ACTIVE  :", active)
-    print("INACTIVE:", inactive)
-    print("=" * 60)
-        
 
     batch.created_count = created
     batch.updated_count = updated

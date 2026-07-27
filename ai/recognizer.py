@@ -71,6 +71,10 @@ class AIRecognizer:
     def remove_product(self, product_id: int) -> None:
         self.store.remove_product(product_id)
 
+    def reset(self) -> None:
+        """Clear the entire recognition index (used by product-data reset)."""
+        self.store.clear()
+
     # --- recognition ---------------------------------------------------------
     def identify(self, image: Image.Image) -> RecognitionResult:
         query = self.vectorize(image, is_scan=True)

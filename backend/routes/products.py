@@ -236,6 +236,30 @@ def delete_import_batch(batch_id: int):
     })
 
 
+@products_bp.post("/reset-all")
+def reset_all_products():
+    """DESTRUCTIVE: wipe all products, images, embeddings and import history.
+
+    Preserves categories, bills, customers, cash drawer, replacements, settings.
+    Requires an explicit typed confirmation in the body to prevent accidents:
+        { "confirm": "DELETE ALL PRODUCTS" }
+    """
+    from backend.services import reset_service
+
+    body = request.get_json(silent=True) or {}
+    if (body.get("confirm") or "").strip() != "DELETE ALL PRODUCTS":
+        return error(
+            "confirmation_required",
+            'To reset, send {"confirm": "DELETE ALL PRODUCTS"}.',
+            status=400,
+        )
+
+    recognizer = current_app.config.get("RECOGNIZER")
+    with session_scope() as s:
+        summary = reset_service.reset_product_data(s, recognizer)
+    return ok({"message": "All product data has been reset.", **summary})
+
+
 @products_bp.get("/export")
 def export_products():
     """Download ALL products as Excel (import-compatible)."""

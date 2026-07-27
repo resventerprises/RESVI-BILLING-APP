@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.17.2-delete-history-safe"  # deleting import history no longer archives/deletes products
+APP_VERSION: str = "1.17.3-reset-products"  # admin reset endpoint: wipe products/images/embeddings/import-history, keep bills+categories
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 
