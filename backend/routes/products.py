@@ -10,6 +10,16 @@ from database.db import session_scope
 from utils.responses import error, ok
 from utils.validators import ValidationError
 
+@bp.route("/debug/products")
+def debug_products():
+    from backend.models import Product
+
+    return {
+        "total": Product.query.count(),
+        "active": Product.query.filter_by(status="ACTIVE").count(),
+        "inactive": Product.query.filter_by(status="INACTIVE").count(),
+    }
+
 products_bp = Blueprint("products", __name__, url_prefix="/api/products")
 
 
