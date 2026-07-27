@@ -28,6 +28,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -134,6 +135,10 @@ class ImportBatch(Base):
     created_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    # The exact uploaded file, kept so it can be downloaded back unchanged. Stored
+    # in the DB (not on disk) because Render's filesystem resets on restart.
+    file_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    file_mime: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False, index=True)
 
 

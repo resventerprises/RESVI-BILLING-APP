@@ -2480,16 +2480,41 @@
       }
       list.innerHTML = "";
       rows.forEach((b) => {
-        const date = b.created_at ? new Date(b.created_at).toLocaleDateString() : "\u2014";
+        const date = b.created_at ? new Date(b.created_at).toLocaleDateString("en-GB") : "\u2014";
         const row = el(`<div class="card ih-row">
           <div class="ih-main">
             <div class="ih-file">\uD83D\uDCC4 ${b.file_name}</div>
             <div class="ih-meta muted">${date} \u00B7 ${b.product_count} products in catalogue</div>
           </div>
-          <button class="btn ghost sm ih-del">Delete</button>
+          <div class="ih-actions">
+            <button class="btn ghost sm ih-dl">\u2B07 Download</button>
+            <button class="btn ghost sm ih-del" style="color:#b91c1c">\uD83D\uDDD1 Delete</button>
+          </div>
         </div>`);
+        row.querySelector(".ih-dl").onclick = async () => {
+          if (b.has_file === false) {
+            alert("The original import file is no longer available.");
+            return;
+          }
+          // Probe first so a missing file shows a clean message instead of a broken download.
+          try {
+            const res = await fetch("/api/products/import/history/" + b.id + "/download");
+            if (!res.ok) {
+              let msg = "The original import file is no longer available.";
+              try { const j = await res.json(); msg = j.error?.message || msg; } catch (_) {}
+              alert(msg);
+              return;
+            }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = b.file_name || "import.xlsx";
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+          } catch (e) { alert("Could not download the file."); }
+        };
         row.querySelector(".ih-del").onclick = async () => {
-          if (!confirm(`Delete all ${b.product_count} products imported from "${b.file_name}"?`)) return;
+          if (!confirm("Are you sure you want to delete this import history?")) return;
           try {
             const r = await api.del("/api/products/import/history/" + b.id);
             globalToast(`Removed ${r.removed} products`);

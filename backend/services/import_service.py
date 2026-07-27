@@ -166,8 +166,15 @@ def import_products(session: Session, recognizer, file_bytes: bytes,
                 disk_images.setdefault(f.name.lower(), f)
 
     # Record this import as a batch so products can be listed/deleted by file.
+    # Keep the exact uploaded bytes so the file can be downloaded back unchanged.
     from database.models import ImportBatch
-    batch = ImportBatch(file_name=filename or "import.xlsx")
+    xlsx_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    is_xlsx = (filename or "").lower().endswith((".xlsx", ".xls"))
+    batch = ImportBatch(
+        file_name=filename or "import.xlsx",
+        file_data=file_bytes if is_xlsx else None,
+        file_mime=xlsx_mime if is_xlsx else "text/csv",
+    )
     session.add(batch)
     session.flush()
 

@@ -73,6 +73,7 @@ def _ensure_columns() -> None:
     from sqlalchemy import inspect, text
 
     bool_default = "false" if engine.dialect.name == "postgresql" else "0"
+    blob_type = "BYTEA" if engine.dialect.name == "postgresql" else "BLOB"
     additions = {
         "products": [
             ("cost_price", "FLOAT NOT NULL DEFAULT 0"),
@@ -94,6 +95,8 @@ def _ensure_columns() -> None:
         ],
         "import_batches": [
             ("status", "VARCHAR(16) NOT NULL DEFAULT 'active'"),
+            ("file_data", blob_type),
+            ("file_mime", "VARCHAR(120)"),
         ],
         "replacement": [
             ("refund_method", "VARCHAR(16)"),

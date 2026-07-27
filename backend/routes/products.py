@@ -173,8 +173,33 @@ def import_history():
                 "created_count": b.created_count,
                 "updated_count": b.updated_count,
                 "product_count": live,
+                "has_file": bool(b.file_data),
             })
     return ok(out)
+
+
+@products_bp.get("/import/history/<int:batch_id>/download")
+def download_import_file(batch_id: int):
+    """Return the exact Excel file that was originally uploaded (never regenerated)."""
+    import io as _io
+
+    from flask import send_file
+
+    from database.models import ImportBatch
+
+    with session_scope() as s:
+        batch = s.get(ImportBatch, batch_id)
+        if not batch:
+            return error("not_found", "Import not found.", status=404)
+        if not batch.file_data:
+            # File predates this feature, or was never stored.
+            return error("file_unavailable",
+                         "The original import file is no longer available.", status=404)
+        data = bytes(batch.file_data)
+        name = batch.file_name or f"import_{batch_id}.xlsx"
+        mime = batch.file_mime or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return send_file(_io.BytesIO(data), mimetype=mime,
+                     as_attachment=True, download_name=name)
 
 
 @products_bp.delete("/import/history/<int:batch_id>")

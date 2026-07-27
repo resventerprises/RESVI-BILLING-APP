@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.16.0-top-categories"  # Top Selling Categories analytics in reports (UI, PDF, Excel)
+APP_VERSION: str = "1.17.0-import-download"  # download original imported Excel file from Import History
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 
