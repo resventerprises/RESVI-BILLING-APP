@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.17.0-import-download"  # download original imported Excel file from Import History
+APP_VERSION: str = "1.17.1-import-reactivate"  # re-import reactivates archived products (fix 181/275 bug)
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

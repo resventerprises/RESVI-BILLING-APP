@@ -10,29 +10,8 @@ from database.db import session_scope
 from utils.responses import error, ok
 from utils.validators import ValidationError
 
-
 products_bp = Blueprint("products", __name__, url_prefix="/api/products")
 
-@products_bp.get("/debug/products")
-def debug_products():
-    from sqlalchemy import func, select
-    from database.models import Product, Status
-    from database.db import session_scope
-
-    with session_scope() as s:
-        active = s.scalar(
-            select(func.count(Product.id)).where(Product.status == Status.ACTIVE)
-        ) or 0
-
-        inactive = s.scalar(
-            select(func.count(Product.id)).where(Product.status == Status.INACTIVE)
-        ) or 0
-
-    return {
-        "total": active + inactive,
-        "active": active,
-        "inactive": inactive
-    }
 
 def _recognizer():
     return current_app.config["RECOGNIZER"]

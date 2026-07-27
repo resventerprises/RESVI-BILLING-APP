@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from backend.services import category_service
 from backend.services.code_generator import next_barcode, next_product_code
+from ai.enrollment import enroll_image
 from config import settings
 from database.crud import repositories as repo
 from database.models import Product, Status
@@ -238,12 +239,26 @@ def import_products(session: Session, recognizer, file_bytes: bytes,
                     existing.barcode = barcode
                 if min_stock:
                     existing.min_stock_level = min_stock
+                # Re-importing a product is an explicit action to bring it back:
+                # if it had been archived (e.g. by a prior import-delete), make it
+                # ACTIVE again and re-enroll it. Importing never archives.
+                was_archived = existing.status == Status.INACTIVE
+                if was_archived:
+                    existing.status = Status.ACTIVE
                 if qty_val and (existing.quantity or 0) != qty_val:
                     from backend.services import inventory_service
                     inventory_service.adjust(session, existing.id, qty_val - (existing.quantity or 0),
                                              remarks="Bulk import update")
                 product = existing
                 product.import_batch_id = batch.id
+                if was_archived:
+                    session.flush()
+                    recognizer.remove_product(product.id)  # avoid duplicate vectors
+                    for image in repo.product_images.for_product(session, product.id):
+                        try:
+                            enroll_image(session, recognizer, product, image)
+                        except Exception:
+                            pass
                 updated += 1
                 entry["status"] = "updated"
             else:
