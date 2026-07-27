@@ -30,19 +30,24 @@ def today():
 @replacements_bp.post("")
 def create():
     body = request.get_json(silent=True) or {}
-    if not body.get("returned_product_id"):
-        return error("validation_error", "Please choose the returned product.")
+    has_returned = body.get("returned_product_id") or (body.get("returned_manual_name") or "").strip()
+    if not has_returned:
+        return error("validation_error", "Please choose or enter the returned product.")
     try:
         with session_scope() as s:
             r = replacement_service.create_replacement(
                 s,
-                returned_product_id=int(body["returned_product_id"]),
+                returned_product_id=(int(body["returned_product_id"]) if body.get("returned_product_id") else None),
                 returned_qty=int(body.get("returned_qty") or 1),
+                returned_manual_name=body.get("returned_manual_name"),
+                returned_manual_price=body.get("returned_manual_price"),
                 replacement_product_id=(
                     int(body["replacement_product_id"])
                     if body.get("replacement_product_id") else None
                 ),
                 replacement_qty=int(body.get("replacement_qty") or 1),
+                replacement_manual_name=body.get("replacement_manual_name"),
+                replacement_manual_price=body.get("replacement_manual_price"),
                 customer_name=body.get("customer_name"),
                 mobile=body.get("mobile"),
                 reason=body.get("reason"),

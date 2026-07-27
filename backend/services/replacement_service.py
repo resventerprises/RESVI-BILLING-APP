@@ -48,10 +48,12 @@ def _serialize(r: Replacement) -> dict:
         "returned_name": r.returned_name,
         "returned_qty": r.returned_qty,
         "returned_price": round(r.returned_price or 0, 2),
+        "returned_is_manual": bool(getattr(r, "returned_is_manual", False)),
         "old_amount": round(r.old_amount or 0, 2),
         "replacement_name": r.replacement_name or "",
         "replacement_qty": r.replacement_qty or 0,
         "replacement_price": round(r.replacement_price or 0, 2),
+        "replacement_is_manual": bool(getattr(r, "replacement_is_manual", False)),
         "new_amount": round(r.new_amount or 0, 2),
         "difference": round(r.difference or 0, 2),
         "collected_amount": round(r.collected_amount or 0, 2),
@@ -68,10 +70,14 @@ def _serialize(r: Replacement) -> dict:
 def create_replacement(
     session: Session,
     *,
-    returned_product_id: int,
+    returned_product_id: int | None = None,
     returned_qty: int = 1,
+    returned_manual_name: str | None = None,
+    returned_manual_price: float | None = None,
     replacement_product_id: int | None = None,
     replacement_qty: int = 1,
+    replacement_manual_name: str | None = None,
+    replacement_manual_price: float | None = None,
     customer_name: str | None = None,
     mobile: str | None = None,
     reason: str | None = None,
@@ -81,17 +87,36 @@ def create_replacement(
 ) -> dict:
     from backend.services import billing_service
 
-    returned = session.get(Product, returned_product_id)
-    if not returned:
-        raise ValidationError("Returned product not found.")
     returned_qty = int(returned_qty or 1)
     if returned_qty < 1:
         raise ValidationError("Returned quantity must be at least 1.")
 
-    old_price = float(returned.selling_price or 0)
+    # ---- Resolve the RETURNED item: existing product OR manual entry ----
+    returned = None
+    returned_is_manual = False
+    if returned_product_id:
+        returned = session.get(Product, returned_product_id)
+        if not returned:
+            raise ValidationError("Returned product not found.")
+        returned_name = returned.product_name
+        old_price = float(returned.selling_price or 0)
+    elif (returned_manual_name or "").strip():
+        returned_is_manual = True
+        returned_name = returned_manual_name.strip()
+        try:
+            old_price = float(returned_manual_price)
+        except (TypeError, ValueError):
+            raise ValidationError("Manual returned product needs a valid price.")
+        if old_price < 0:
+            raise ValidationError("Price cannot be negative.")
+    else:
+        raise ValidationError("Please choose or enter the returned product.")
     old_amount = round(old_price * returned_qty, 2)
 
+    # ---- Resolve the REPLACEMENT item (optional): existing OR manual ----
     new_product = None
+    new_is_manual = False
+    new_name = None
     new_amount = 0.0
     new_price = 0.0
     replacement_qty = int(replacement_qty or 0)
@@ -106,25 +131,40 @@ def create_replacement(
                 f"Not enough stock for {new_product.product_name} "
                 f"(available {new_product.quantity or 0})."
             )
+        new_name = new_product.product_name
         new_price = float(new_product.selling_price or 0)
+        new_amount = round(new_price * replacement_qty, 2)
+    elif (replacement_manual_name or "").strip():
+        new_is_manual = True
+        if replacement_qty < 1:
+            replacement_qty = 1
+        new_name = replacement_manual_name.strip()
+        try:
+            new_price = float(replacement_manual_price)
+        except (TypeError, ValueError):
+            raise ValidationError("Manual replacement product needs a valid price.")
+        if new_price < 0:
+            raise ValidationError("Price cannot be negative.")
         new_amount = round(new_price * replacement_qty, 2)
     else:
         replacement_qty = 0
 
+    has_replacement = bool(new_product or new_is_manual)
     difference = round(new_amount - old_amount, 2)
     collected = round(difference, 2) if difference > 0 else 0.0
     refund = round(-difference, 2) if difference < 0 else 0.0
-    kind = "EXCHANGE" if new_product else "REFUND_ONLY"
+    kind = "EXCHANGE" if has_replacement else "REFUND_ONLY"
 
-    # ---- Inventory: returned item back IN, replacement item OUT ----
-    inventory_service.adjust(
-        session, returned.id, returned_qty,
-        remarks=f"Replacement return: {returned.product_name}",
-    )
-    if new_product:
+    # ---- Inventory: only REAL products move stock. Manual items have no stock. ----
+    if returned and not returned_is_manual:
+        inventory_service.adjust(
+            session, returned.id, returned_qty,
+            remarks=f"Replacement return: {returned_name}",
+        )
+    if new_product and not new_is_manual:
         inventory_service.adjust(
             session, new_product.id, -replacement_qty,
-            remarks=f"Replacement issue: {new_product.product_name}",
+            remarks=f"Replacement issue: {new_name}",
         )
 
     # ---- Money ----
@@ -133,7 +173,7 @@ def create_replacement(
     if collected > 0:
         # Customer pays the difference: a real bill for exactly that amount.
         # A MANUAL line is used so inventory isn't deducted twice.
-        label = f"Replacement: {returned.product_name} \u2192 {new_product.product_name}"
+        label = f"Replacement: {returned_name} \u2192 {new_name}"
         bill = billing_service.complete_bill(
             session,
             [],
@@ -149,16 +189,18 @@ def create_replacement(
         customer_name=(customer_name or "").strip() or None,
         mobile=(mobile or "").strip() or None,
         reason=(reason or "").strip() or None,
-        returned_product_id=returned.id,
-        returned_name=returned.product_name,
+        returned_product_id=(returned.id if returned and not returned_is_manual else None),
+        returned_name=returned_name,
         returned_qty=returned_qty,
         returned_price=old_price,
         old_amount=old_amount,
-        replacement_product_id=new_product.id if new_product else None,
-        replacement_name=new_product.product_name if new_product else None,
+        returned_is_manual=returned_is_manual,
+        replacement_product_id=(new_product.id if new_product and not new_is_manual else None),
+        replacement_name=new_name,
         replacement_qty=replacement_qty,
         replacement_price=new_price,
         new_amount=new_amount,
+        replacement_is_manual=new_is_manual,
         difference=difference,
         collected_amount=collected,
         refund_amount=refund,

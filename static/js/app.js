@@ -1744,12 +1744,28 @@
       </div>
       <div class="card">
         <div class="rep-h">Returned product</div>
-        <div class="rp-old"></div>
+        <div class="src-toggle" data-slot="old">
+          <button class="src-btn active" data-src="existing">Existing product</button>
+          <button class="src-btn" data-src="manual">Manual entry</button>
+        </div>
+        <div class="rp-old src-existing" style="margin-top:10px"></div>
+        <div class="src-manual" hidden style="margin-top:10px">
+          <div class="field"><label>Product name</label><input class="input rp-oldmname" type="text" placeholder="e.g. Broken toy"/></div>
+          <div class="field"><label>Product price</label><input class="input rp-oldmprice" type="number" inputmode="decimal" placeholder="0"/></div>
+        </div>
         <div class="field"><label>Quantity</label><input class="input rp-oldqty" type="number" inputmode="numeric" value="1" min="1"/></div>
       </div>
       <div class="card rp-newcard">
         <div class="rep-h">Replacement product</div>
-        <div class="rp-new"></div>
+        <div class="src-toggle" data-slot="new">
+          <button class="src-btn active" data-src="existing">Existing product</button>
+          <button class="src-btn" data-src="manual">Manual entry</button>
+        </div>
+        <div class="rp-new src-existing" style="margin-top:10px"></div>
+        <div class="src-manual" hidden style="margin-top:10px">
+          <div class="field"><label>Product name</label><input class="input rp-newmname" type="text" placeholder="e.g. Custom hamper"/></div>
+          <div class="field"><label>Product price</label><input class="input rp-newmprice" type="number" inputmode="decimal" placeholder="0"/></div>
+        </div>
         <div class="field"><label>Quantity</label><input class="input rp-newqty" type="number" inputmode="numeric" value="1" min="1"/></div>
       </div>
       <div class="rp-refundtoggle" style="margin-bottom:12px">
@@ -1787,12 +1803,49 @@
     form.querySelector(".rp-old").appendChild(oldPick);
     form.querySelector(".rp-new").appendChild(newPick);
 
+    // Source mode per slot: "existing" (DB picker) or "manual" (name+price).
+    const src = { old: "existing", new: "existing" };
+    form.querySelectorAll(".src-toggle").forEach((tg) => {
+      const slot = tg.dataset.slot;
+      const card = tg.closest(".card");
+      tg.querySelectorAll(".src-btn").forEach((b) => {
+        b.onclick = () => {
+          tg.querySelectorAll(".src-btn").forEach((x) => x.classList.remove("active"));
+          b.classList.add("active");
+          src[slot] = b.dataset.src;
+          card.querySelector(".src-existing").hidden = (src[slot] !== "existing");
+          card.querySelector(".src-manual").hidden = (src[slot] !== "manual");
+          recalc();
+        };
+      });
+    });
+    // Recalc when manual fields change.
+    ["rp-oldmname", "rp-oldmprice", "rp-newmname", "rp-newmprice"].forEach((cls) => {
+      form.querySelector("." + cls).oninput = () => recalc();
+    });
+
+    // Read a slot's current value regardless of source.
+    const slotValue = (slot) => {
+      if (src[slot] === "manual") {
+        const nameEl = form.querySelector(slot === "old" ? ".rp-oldmname" : ".rp-newmname");
+        const priceEl = form.querySelector(slot === "old" ? ".rp-oldmprice" : ".rp-newmprice");
+        const name = nameEl.value.trim();
+        const price = parseFloat(priceEl.value);
+        if (!name || isNaN(price)) return null;
+        return { manual: true, name, selling_price: price };
+      }
+      const pick = slot === "old" ? oldPick : newPick;
+      return pick.value ? { manual: false, id: pick.value.id, name: pick.value.product_name, selling_price: pick.value.selling_price } : null;
+    };
+
     const recalc = () => {
       const oq = Math.max(1, parseInt(form.querySelector(".rp-oldqty").value) || 1);
       const nq = Math.max(1, parseInt(form.querySelector(".rp-newqty").value) || 1);
-      const oldVal = oldPick.value ? oldPick.value.selling_price * oq : 0;
+      const oldItem = slotValue("old");
+      const newItem = mode === "refund" ? null : slotValue("new");
+      const oldVal = oldItem ? oldItem.selling_price * oq : 0;
       const isRefund = mode === "refund";
-      const newVal = (!isRefund && newPick.value) ? newPick.value.selling_price * nq : 0;
+      const newVal = (!isRefund && newItem) ? newItem.selling_price * nq : 0;
       const diff = Math.round((newVal - oldVal) * 100) / 100;
 
       form.querySelector(".rp-oldval").textContent = money(oldVal);
@@ -1805,12 +1858,11 @@
       const refundCard = form.querySelector(".rp-refundcard");
 
       if (isRefund) {
-        // Refund Only: the whole returned value goes back to the customer.
         lbl.textContent = "Refund amount";
         dEl.textContent = money(oldVal);
         dEl.style.color = "#b91c1c";
-        refundCard.hidden = !oldPick.value;   // show method chooser once product picked
-        msg.textContent = !oldPick.value ? "Choose the returned product."
+        refundCard.hidden = !oldItem;
+        msg.textContent = !oldItem ? "Choose or enter the returned product."
           : (refundMethod === "cash"
               ? `Refund ${money(oldVal)} in cash \u2014 deducted from the cash drawer.`
               : `Refund ${money(oldVal)} via ${refundMethod.toUpperCase()} \u2014 recorded only, cash drawer not affected.`);
@@ -1818,15 +1870,14 @@
         lbl.textContent = "Difference";
         dEl.textContent = (diff > 0 ? "+" : "") + money(diff);
         dEl.style.color = diff > 0 ? "#b91c1c" : (diff < 0 ? "#15803d" : "");
-        // A cheaper replacement means money back — show the refund-method chooser.
         refundCard.hidden = !(diff < 0);
-        if (!oldPick.value) msg.textContent = "Choose the returned product to begin.";
+        if (!oldItem) msg.textContent = "Choose or enter the returned product to begin.";
         else if (diff > 0) msg.textContent = `Customer pays ${money(diff)}. A bill will be created.`;
         else if (diff < 0) msg.textContent = refundMethod === "cash"
           ? `Refund ${money(-diff)} in cash \u2014 deducted from the cash drawer.`
           : `Refund ${money(-diff)} via ${refundMethod.toUpperCase()} \u2014 cash drawer not affected.`;
-        else if (newPick.value) msg.textContent = "Even exchange \u2014 nothing to pay.";
-        else msg.textContent = "Choose the replacement product.";
+        else if (newItem) msg.textContent = "Even exchange \u2014 nothing to pay.";
+        else msg.textContent = "Choose or enter the replacement product.";
       }
       form.querySelector(".rp-save").textContent =
         isRefund ? "Complete refund" : "Complete replacement";
@@ -1867,28 +1918,37 @@
 
     form.querySelector(".rp-hist").onclick = () => go("replacements");
     form.querySelector(".rp-save").onclick = async () => {
-      if (!oldPick.value) { alert("Please choose the returned product."); return; }
       const isRefund = mode === "refund";
+      const oldItem = slotValue("old");
+      const newItem = isRefund ? null : slotValue("new");
+      if (!oldItem) { alert("Please choose or enter the returned product."); return; }
       const oq = Math.max(1, parseInt(form.querySelector(".rp-oldqty").value) || 1);
       const nq = Math.max(1, parseInt(form.querySelector(".rp-newqty").value) || 1);
-      const oldVal = oldPick.value.selling_price * oq;
-      const newVal = (!isRefund && newPick.value) ? newPick.value.selling_price * nq : 0;
+      const oldVal = oldItem.selling_price * oq;
+      const newVal = newItem ? newItem.selling_price * nq : 0;
       const diff = Math.round((newVal - oldVal) * 100) / 100;
 
-      if (!isRefund && !newPick.value) {
-        alert("Choose a replacement product, or switch to \u201CRefund Only\u201D.");
+      if (!isRefund && !newItem) {
+        alert("Choose or enter a replacement product, or switch to \u201CRefund Only\u201D.");
         return;
       }
 
       const body = {
-        returned_product_id: oldPick.value.id,
         returned_qty: oq,
         customer_name: form.querySelector(".rp-name").value,
         mobile: form.querySelector(".rp-mobile").value,
         reason: form.querySelector(".rp-reason").value,
         refund_method: refundMethod,
       };
-      if (!isRefund) { body.replacement_product_id = newPick.value.id; body.replacement_qty = nq; }
+      // Returned item: existing or manual.
+      if (oldItem.manual) { body.returned_manual_name = oldItem.name; body.returned_manual_price = oldItem.selling_price; }
+      else { body.returned_product_id = oldItem.id; }
+      // Replacement item (if not refund-only): existing or manual.
+      if (!isRefund && newItem) {
+        body.replacement_qty = nq;
+        if (newItem.manual) { body.replacement_manual_name = newItem.name; body.replacement_manual_price = newItem.selling_price; }
+        else { body.replacement_product_id = newItem.id; }
+      }
 
       // Customer owes money -> ask how they're paying (same options as billing).
       if (!isRefund && diff > 0) {
@@ -2011,8 +2071,8 @@
             </div>
           </div>
           <div class="meta">${r.date} ${r.time}${r.customer_name ? " \u00B7 " + r.customer_name : ""}${r.mobile ? " \u00B7 " + r.mobile : ""}</div>
-          <div class="setting-row"><span class="k">Returned</span><span class="v">${r.returned_name} \u00D7${r.returned_qty} \u00B7 ${money(r.old_amount)}</span></div>
-          ${!isRefund ? `<div class="setting-row"><span class="k">Replacement</span><span class="v">${r.replacement_name} \u00D7${r.replacement_qty} \u00B7 ${money(r.new_amount)}</span></div>` : ""}
+          <div class="setting-row"><span class="k">Returned</span><span class="v">${r.returned_name}${r.returned_is_manual ? ' <span class="pill" style="background:#7c3aed">Manual</span>' : ""} \u00D7${r.returned_qty} \u00B7 ${money(r.old_amount)}</span></div>
+          ${!isRefund ? `<div class="setting-row"><span class="k">Replacement</span><span class="v">${r.replacement_name}${r.replacement_is_manual ? ' <span class="pill" style="background:#7c3aed">Manual</span>' : ""} \u00D7${r.replacement_qty} \u00B7 ${money(r.new_amount)}</span></div>` : ""}
           <div class="setting-row" style="border:none"><span class="k">Settlement</span><span class="v">${settle}${r.payment_method ? " \u00B7 " + r.payment_method.toUpperCase() : ""}</span></div>
         </div>`);
         card.querySelector(".rh-pdf").onclick = () => window.open(`/api/replacements/${r.id}/pdf`, "_blank");

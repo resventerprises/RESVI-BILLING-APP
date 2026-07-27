@@ -62,9 +62,11 @@ def build_receipt(r: dict) -> bytes:
 
     story.append(Paragraph("Items", sec))
     rows = [["", "Product", "Qty", "Amount"]]
-    rows.append(["Returned", r["returned_name"], str(r["returned_qty"]), _rs(r["old_amount"])])
+    rn = r["returned_name"] + (" (Manual)" if r.get("returned_is_manual") else "")
+    rows.append(["Returned", rn, str(r["returned_qty"]), _rs(r["old_amount"])])
     if r.get("replacement_name"):
-        rows.append(["Replacement", r["replacement_name"], str(r["replacement_qty"]),
+        rp = r["replacement_name"] + (" (Manual)" if r.get("replacement_is_manual") else "")
+        rows.append(["Replacement", rp, str(r["replacement_qty"]),
                      _rs(r["new_amount"])])
     else:
         rows.append(["Replacement", "\u2014 none (refund only) \u2014", "-", _rs(0)])

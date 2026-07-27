@@ -306,6 +306,8 @@ class Replacement(Base):
     new_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
 
     difference: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)   # new - old
+    returned_is_manual: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    replacement_is_manual: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     collected_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     refund_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     # How the refund was paid out. ONLY "cash" reduces the cash drawer; UPI/card

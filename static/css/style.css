@@ -840,3 +840,9 @@ table { border-collapse: collapse; width: 100%; }
 
 /* ---------- Refund Only toggle (inline, single page) ---------- */
 .rp-toggle.active { border-color: var(--primary); background: var(--surface-2); color: var(--primary); font-weight: 700; }
+
+/* ---------- Existing / Manual source toggle ---------- */
+.src-toggle { display: flex; gap: 6px; background: var(--surface-2); padding: 4px; border-radius: 10px; }
+.src-btn { flex: 1; padding: 7px 8px; border: none; background: transparent; border-radius: 7px;
+  font-weight: 600; font-size: 13px; cursor: pointer; color: var(--muted); }
+.src-btn.active { background: #fff; color: var(--text); box-shadow: var(--shadow); }

@@ -72,6 +72,7 @@ def _ensure_columns() -> None:
     """
     from sqlalchemy import inspect, text
 
+    bool_default = "false" if engine.dialect.name == "postgresql" else "0"
     additions = {
         "products": [
             ("cost_price", "FLOAT NOT NULL DEFAULT 0"),
@@ -96,6 +97,8 @@ def _ensure_columns() -> None:
         ],
         "replacement": [
             ("refund_method", "VARCHAR(16)"),
+            ("returned_is_manual", f"BOOLEAN NOT NULL DEFAULT {bool_default}"),
+            ("replacement_is_manual", f"BOOLEAN NOT NULL DEFAULT {bool_default}"),
         ],
     }
     inspector = inspect(engine)
