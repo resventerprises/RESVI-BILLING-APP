@@ -2906,12 +2906,14 @@
     });
 
     const renderRow = (b) => {
-      const row = el(`<div class="card product-card" style="grid-template-columns:1fr auto auto;gap:10px;align-items:center">
+      const row = el(`<div class="card product-card" style="grid-template-columns:1fr auto auto auto;gap:8px;align-items:center">
         <div class="bill-open" style="cursor:pointer"><div class="name">${b.bill_number}</div>
-          <div class="meta">${b.time_ist || ""} \u00B7 ${b.total_items} items</div></div>
+          <div class="meta">${b.time_ist || ""} \u00B7 ${b.total_items} items \u00B7 ${(b.payment_method || "cash").toUpperCase()}</div></div>
         <div class="price">${money(b.grand_total)}</div>
+        <button class="btn ghost sm bill-edit" title="Edit payment method" style="width:auto">\u270F\uFE0F</button>
         <button class="btn ghost sm bill-del" title="Delete bill" style="width:auto">\uD83D\uDDD1</button></div>`);
       row.querySelector(".bill-open").onclick = () => go("bill", { id: b.id });
+      row.querySelector(".bill-edit").onclick = (e) => { e.stopPropagation(); editPaymentModal(b); };
       row.querySelector(".bill-del").onclick = async (e) => {
         e.stopPropagation();
         if (!confirm(`This bill (${b.bill_number}) will be permanently deleted. Stock will be restored. Are you sure?`)) return;
@@ -2923,6 +2925,71 @@
       };
       return row;
     };
+
+    // Edit ONLY the payment method (and split amounts) of a completed bill.
+    function editPaymentModal(b) {
+      let method = (b.payment_method || "cash").toLowerCase();
+      const total = b.grand_total || 0;
+      const m = el(`<div class="modal"><h3>Edit Payment Method</h3>
+        <div class="sub">${b.bill_number} \u00B7 ${money(total)}</div>
+        <div class="muted sm" style="margin:6px 0 10px">Only the payment method changes. Items, prices and stock are not affected.</div>
+        <div class="pay-grid">
+          <button class="pay-opt em-opt" data-m="cash">\uD83D\uDCB5 Cash</button>
+          <button class="pay-opt em-opt" data-m="upi">\uD83D\uDCF1 UPI</button>
+          <button class="pay-opt em-opt" data-m="card">\uD83D\uDCB3 Card</button>
+          <button class="pay-opt em-opt" data-m="split">\u2702\uFE0F Split</button>
+        </div>
+        <div class="em-split" hidden style="margin-top:10px">
+          <div class="field"><label>\uD83D\uDCB5 Cash</label><input class="input es-cash" type="number" inputmode="decimal" value="0"/></div>
+          <div class="field"><label>\uD83D\uDCF1 UPI</label><input class="input es-upi" type="number" inputmode="decimal" value="0"/></div>
+          <div class="field"><label>\uD83D\uDCB3 Card</label><input class="input es-card" type="number" inputmode="decimal" value="0"/></div>
+          <div class="es-remaining" style="font-weight:700;margin:6px 0"></div>
+        </div>
+        <button class="btn primary em-save" style="margin-top:12px">Save changes</button>
+        <button class="btn ghost em-cancel" style="margin-top:8px">Cancel</button></div>`);
+      const ref = modal(m);
+      const splitBox = m.querySelector(".em-split");
+      const markActive = () => m.querySelectorAll(".em-opt").forEach((x) => x.classList.toggle("active", x.dataset.m === method));
+      const get = (c) => parseFloat(m.querySelector(c).value) || 0;
+      const updSplit = () => {
+        const paid = get(".es-cash") + get(".es-upi") + get(".es-card");
+        const rem = Math.round((total - paid) * 100) / 100;
+        const elx = m.querySelector(".es-remaining");
+        elx.textContent = rem === 0 ? "\u2713 Balanced" : (rem > 0 ? `Remaining: ${money(rem)}` : `Over by ${money(-rem)}`);
+        elx.style.color = rem === 0 ? "#15803d" : "#b91c1c";
+      };
+      // Pre-fill split from existing breakdown if the bill is already split.
+      if (method === "split" && b.payment_breakdown) {
+        m.querySelector(".es-cash").value = b.payment_breakdown.cash || 0;
+        m.querySelector(".es-upi").value = b.payment_breakdown.upi || 0;
+        m.querySelector(".es-card").value = b.payment_breakdown.card || 0;
+      }
+      const syncSplitVisible = () => { splitBox.hidden = method !== "split"; if (method === "split") updSplit(); };
+      m.querySelectorAll(".em-opt").forEach((btn) => {
+        btn.onclick = () => { method = btn.dataset.m; markActive(); syncSplitVisible(); };
+      });
+      m.querySelectorAll(".em-split input").forEach((i) => (i.oninput = updSplit));
+      markActive(); syncSplitVisible();
+
+      m.querySelector(".em-cancel").onclick = () => ref.resolve();
+      m.querySelector(".em-save").onclick = async () => {
+        const body = { payment_method: method };
+        if (method === "split") {
+          const parts = { cash: get(".es-cash"), upi: get(".es-upi"), card: get(".es-card") };
+          if (Math.round((parts.cash + parts.upi + parts.card) * 100) / 100 !== Math.round(total * 100) / 100) {
+            alert("Split amounts must add up to the bill total."); return;
+          }
+          body.payment_split = parts;
+        }
+        if (!confirm(`Change payment method of ${b.bill_number} to ${method.toUpperCase()}?`)) return;
+        try {
+          const r = await api.put(`/api/bills/${b.id}/payment-method`, body);
+          ref.resolve();
+          globalToast("Bill updated successfully");
+          go("history");
+        } catch (e) { alert(e.message); }
+      };
+    }
 
     groups.forEach((key) => {
       const dayBills = byDate[key];

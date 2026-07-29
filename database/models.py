@@ -343,3 +343,24 @@ class StockMovement(Base):
     reference: Mapped[str | None] = mapped_column(String(64), nullable=True)  # e.g. bill number
     remarks: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False, index=True)
+
+
+class BillPaymentEdit(Base):
+    """Audit log for payment-method corrections on completed bills.
+
+    Records only payment-method changes — bill items, amounts and inventory are
+    never edited. Keeps a full trail: old method, new method, and when.
+    """
+
+    __tablename__ = "bill_payment_edits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bill_id: Mapped[int] = mapped_column(
+        ForeignKey("bills.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    bill_number: Mapped[str] = mapped_column(String(32), nullable=False)
+    old_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    new_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    old_breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False, index=True)

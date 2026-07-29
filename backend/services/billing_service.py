@@ -274,3 +274,86 @@ def serialize_bill(bill: Bill, session: Session, with_items: bool = False) -> di
             for it in bill.items
         ]
     return data
+
+
+def update_payment_method(session: Session, bill_id: int, new_method: str,
+                          payment_split: dict | None = None) -> dict:
+    """Correct the payment method on a completed bill.
+
+    ONLY the payment method (and split amounts) change. Bill number, items,
+    quantities, prices, discounts, totals and inventory are all left untouched.
+    Because cash-drawer, dashboard and reports all read payment_method live from
+    the bill, this correction propagates everywhere automatically. Every change
+    is written to the BillPaymentEdit audit log.
+    """
+    import json as _json
+
+    from database.models import Bill, BillPaymentEdit
+
+    method = (new_method or "").strip().lower()
+    if method not in ("cash", "upi", "card", "split"):
+        raise ValidationError("Payment method must be cash, UPI, card or split.")
+
+    bill = session.get(Bill, bill_id)
+    if not bill:
+        raise ValidationError("Bill not found.")
+
+    old_method = bill.payment_method
+    old_breakdown = bill.payment_breakdown
+
+    new_breakdown = None
+    if method == "split":
+        parts = payment_split or {}
+        try:
+            cash = round(float(parts.get("cash", 0) or 0), 2)
+            upi = round(float(parts.get("upi", 0) or 0), 2)
+            card = round(float(parts.get("card", 0) or 0), 2)
+        except (TypeError, ValueError):
+            raise ValidationError("Split amounts must be numbers.")
+        if min(cash, upi, card) < 0:
+            raise ValidationError("Split amounts cannot be negative.")
+        total = round(cash + upi + card, 2)
+        if total != round(bill.grand_total or 0, 2):
+            raise ValidationError(
+                f"Split total {total} must equal the bill total {round(bill.grand_total or 0, 2)}."
+            )
+        new_breakdown = _json.dumps({"cash": cash, "upi": upi, "card": card})
+
+    # Apply the correction.
+    bill.payment_method = method
+    bill.payment_breakdown = new_breakdown   # cleared for non-split methods
+
+    # Audit log.
+    session.add(BillPaymentEdit(
+        bill_id=bill.id,
+        bill_number=bill.bill_number,
+        old_method=old_method,
+        new_method=method,
+        old_breakdown=old_breakdown,
+        new_breakdown=new_breakdown,
+    ))
+    session.flush()
+    return serialize_bill(bill, session, with_items=True)
+
+
+def payment_edit_history(session: Session, bill_id: int) -> list[dict]:
+    import json as _json
+
+    from database.models import BillPaymentEdit
+    from backend.services.timezone_util import ist_date_str, ist_time_str
+
+    rows = (
+        session.query(BillPaymentEdit)
+        .filter(BillPaymentEdit.bill_id == bill_id)
+        .order_by(BillPaymentEdit.created_at.desc())
+        .all()
+    )
+    out = []
+    for r in rows:
+        out.append({
+            "old_method": r.old_method,
+            "new_method": r.new_method,
+            "date": ist_date_str(r.created_at),
+            "time": ist_time_str(r.created_at),
+        })
+    return out

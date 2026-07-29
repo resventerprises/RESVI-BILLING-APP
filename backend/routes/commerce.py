@@ -83,6 +83,32 @@ def delete_one(bill_id: int):
     return ok({"deleted": 1, "message": "Bill deleted"})
 
 
+@billing_bp.put("/<int:bill_id>/payment-method")
+def edit_payment_method(bill_id: int):
+    """Correct ONLY the payment method (and split amounts) on a completed bill."""
+    from backend.services import billing_service
+
+    body = request.get_json(silent=True) or {}
+    try:
+        with session_scope() as s:
+            updated = billing_service.update_payment_method(
+                s, bill_id,
+                body.get("payment_method"),
+                payment_split=body.get("payment_split"),
+            )
+        return ok({"bill": updated, "message": "Bill updated successfully"})
+    except ValidationError as exc:
+        return error("validation_error", str(exc), status=400)
+
+
+@billing_bp.get("/<int:bill_id>/payment-edits")
+def payment_edit_log(bill_id: int):
+    from backend.services import billing_service
+
+    with session_scope() as s:
+        return ok(billing_service.payment_edit_history(s, bill_id))
+
+
 @sales_bp.get("/daily")
 def daily():
     limit = request.args.get("limit", default=30, type=int)
