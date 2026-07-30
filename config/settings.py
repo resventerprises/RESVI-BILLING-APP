@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.18.0-edit-payment"  # edit completed bill payment method (with audit log); drawer/reports recompute live
+APP_VERSION: str = "1.19.0-history-daily"  # remove import history UI; full bill history w/ filters+search+pagination; daily sales drill-down
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

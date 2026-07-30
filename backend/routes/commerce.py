@@ -57,9 +57,23 @@ def complete():
 
 @billing_bp.get("")
 def history():
-    limit = request.args.get("limit", default=50, type=int)
+    """Bill history with optional date-range, bill-number search and pagination.
+
+    Query params: from, to (YYYY-MM-DD IST), q (bill number), limit, offset.
+    Latest bills first. Backward compatible: with no params, returns recent bills.
+    """
+    from backend.services import sales_service
+
+    args = request.args
     with session_scope() as s:
-        return ok(sales_service.bill_history(s, limit))
+        return ok(sales_service.bill_history_filtered(
+            s,
+            date_from=args.get("from"),
+            date_to=args.get("to"),
+            query=args.get("q"),
+            limit=args.get("limit", default=50, type=int),
+            offset=args.get("offset", default=0, type=int),
+        ))
 
 
 @billing_bp.get("/<int:bill_id>")

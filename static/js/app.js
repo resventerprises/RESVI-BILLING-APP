@@ -256,7 +256,6 @@
       ["categories", "Categories", "\uD83D\uDDC2\uFE0F"],
       ["inventory", "Inventory", "\uD83D\uDCCA"],
       ["history", "Bill history", "\uD83E\uDDFE"],
-      ["import-history", "Import History", "\uD83D\uDCE5"],
       ["daily", "Daily sales", "\uD83D\uDCC8"],
       ["cash", "Cash Drawer", "\uD83D\uDCB0"],
       ["reports", "Reports", "\uD83D\uDCC4"],
@@ -306,7 +305,7 @@
   // never interrupted; a new bill there already writes to the shared DB.
   let _lastDataVersion = null;
   let _lastSyncAt = null;
-  const REFRESH_SCREENS = new Set(["home", "products", "inventory", "history", "daily", "categories", "import-history"]);
+  const REFRESH_SCREENS = new Set(["home", "products", "inventory", "history", "daily", "categories"]);
   function updateSyncBadge() {
     const badges = document.querySelectorAll(".sync-badge");
     if (!badges.length) return;
@@ -333,6 +332,70 @@
   pollDataVersion();
 
   // ---- Shared chrome --------------------------------------------------------
+  // Shared: edit ONLY the payment method (and split amounts) of a completed bill.
+  // onSaved() is called after a successful save so callers can refresh their view.
+  function editBillPayment(b, onSaved) {
+    let method = (b.payment_method || "cash").toLowerCase();
+    const total = b.grand_total || 0;
+    const m = el(`<div class="modal"><h3>Edit Payment Method</h3>
+      <div class="sub">${b.bill_number} \u00B7 ${money(total)}</div>
+      <div class="muted sm" style="margin:6px 0 10px">Only the payment method changes. Items, prices and stock are not affected.</div>
+      <div class="pay-grid">
+        <button class="pay-opt em-opt" data-m="cash">\uD83D\uDCB5 Cash</button>
+        <button class="pay-opt em-opt" data-m="upi">\uD83D\uDCF1 UPI</button>
+        <button class="pay-opt em-opt" data-m="card">\uD83D\uDCB3 Card</button>
+        <button class="pay-opt em-opt" data-m="split">\u2702\uFE0F Split</button>
+      </div>
+      <div class="em-split" hidden style="margin-top:10px">
+        <div class="field"><label>\uD83D\uDCB5 Cash</label><input class="input es-cash" type="number" inputmode="decimal" value="0"/></div>
+        <div class="field"><label>\uD83D\uDCF1 UPI</label><input class="input es-upi" type="number" inputmode="decimal" value="0"/></div>
+        <div class="field"><label>\uD83D\uDCB3 Card</label><input class="input es-card" type="number" inputmode="decimal" value="0"/></div>
+        <div class="es-remaining" style="font-weight:700;margin:6px 0"></div>
+      </div>
+      <button class="btn primary em-save" style="margin-top:12px">Save changes</button>
+      <button class="btn ghost em-cancel" style="margin-top:8px">Cancel</button></div>`);
+    const ref = modal(m);
+    const splitBox = m.querySelector(".em-split");
+    const markActive = () => m.querySelectorAll(".em-opt").forEach((x) => x.classList.toggle("active", x.dataset.m === method));
+    const get = (c) => parseFloat(m.querySelector(c).value) || 0;
+    const updSplit = () => {
+      const paid = get(".es-cash") + get(".es-upi") + get(".es-card");
+      const rem = Math.round((total - paid) * 100) / 100;
+      const elx = m.querySelector(".es-remaining");
+      elx.textContent = rem === 0 ? "\u2713 Balanced" : (rem > 0 ? `Remaining: ${money(rem)}` : `Over by ${money(-rem)}`);
+      elx.style.color = rem === 0 ? "#15803d" : "#b91c1c";
+    };
+    if (method === "split" && b.payment_breakdown) {
+      m.querySelector(".es-cash").value = b.payment_breakdown.cash || 0;
+      m.querySelector(".es-upi").value = b.payment_breakdown.upi || 0;
+      m.querySelector(".es-card").value = b.payment_breakdown.card || 0;
+    }
+    const syncSplitVisible = () => { splitBox.hidden = method !== "split"; if (method === "split") updSplit(); };
+    m.querySelectorAll(".em-opt").forEach((btn) => {
+      btn.onclick = () => { method = btn.dataset.m; markActive(); syncSplitVisible(); };
+    });
+    m.querySelectorAll(".em-split input").forEach((i) => (i.oninput = updSplit));
+    markActive(); syncSplitVisible();
+    m.querySelector(".em-cancel").onclick = () => ref.resolve();
+    m.querySelector(".em-save").onclick = async () => {
+      const body = { payment_method: method };
+      if (method === "split") {
+        const parts = { cash: get(".es-cash"), upi: get(".es-upi"), card: get(".es-card") };
+        if (Math.round((parts.cash + parts.upi + parts.card) * 100) / 100 !== Math.round(total * 100) / 100) {
+          alert("Split amounts must add up to the bill total."); return;
+        }
+        body.payment_split = parts;
+      }
+      if (!confirm(`Change payment method of ${b.bill_number} to ${method.toUpperCase()}?`)) return;
+      try {
+        await api.put(`/api/bills/${b.id}/payment-method`, body);
+        ref.resolve();
+        globalToast("Bill updated successfully");
+        if (onSaved) onSaved();
+      } catch (e) { alert(e.message); }
+    };
+  }
+
   function topbar(title, { back = true } = {}) {
     const bar = el(`<div class="topbar">
       <button class="hamburger" aria-label="Menu">\u2630</button>
@@ -2458,75 +2521,6 @@
     renderFields();
   });
 
-  // ---- Import History ------------------------------------------------------
-  route("import-history", async () => {
-    view.appendChild(topbar("Import History"));
-    const s = screen();
-    const list = el(`<div class="list"></div>`);
-    s.appendChild(list);
-    view.appendChild(s);
-
-    async function load() {
-      list.innerHTML = `<div class="muted" style="padding:16px">Loading\u2026</div>`;
-      let rows = [];
-      try { rows = await api.get("/api/products/import/history"); } catch (e) {
-        list.innerHTML = `<div class="msg">${e.message}</div>`; return;
-      }
-      if (!rows.length) {
-        list.innerHTML = `<div class="empty"><div class="empty-ico">\uD83D\uDCE5</div>
-          <div>No imports yet.</div>
-          <div class="muted sm">Import an Excel file from Products \u2192 Import.</div></div>`;
-        return;
-      }
-      list.innerHTML = "";
-      rows.forEach((b) => {
-        const date = b.created_at ? new Date(b.created_at).toLocaleDateString("en-GB") : "\u2014";
-        const row = el(`<div class="card ih-row">
-          <div class="ih-main">
-            <div class="ih-file">\uD83D\uDCC4 ${b.file_name}</div>
-            <div class="ih-meta muted">${date} \u00B7 ${b.product_count} products in catalogue</div>
-          </div>
-          <div class="ih-actions">
-            <button class="btn ghost sm ih-dl">\u2B07 Download</button>
-            <button class="btn ghost sm ih-del" style="color:#b91c1c">\uD83D\uDDD1 Delete</button>
-          </div>
-        </div>`);
-        row.querySelector(".ih-dl").onclick = async () => {
-          if (b.has_file === false) {
-            alert("The original import file is no longer available.");
-            return;
-          }
-          // Probe first so a missing file shows a clean message instead of a broken download.
-          try {
-            const res = await fetch("/api/products/import/history/" + b.id + "/download");
-            if (!res.ok) {
-              let msg = "The original import file is no longer available.";
-              try { const j = await res.json(); msg = j.error?.message || msg; } catch (_) {}
-              alert(msg);
-              return;
-            }
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url; a.download = b.file_name || "import.xlsx";
-            document.body.appendChild(a); a.click(); a.remove();
-            URL.revokeObjectURL(url);
-          } catch (e) { alert("Could not download the file."); }
-        };
-        row.querySelector(".ih-del").onclick = async () => {
-          if (!confirm("Are you sure you want to delete this import history?\n\nThis removes only the history record. Your products stay active and untouched.")) return;
-          try {
-            await api.del("/api/products/import/history/" + b.id);
-            globalToast("Import history deleted");
-            load();
-          } catch (e) { alert(e.message); }
-        };
-        list.appendChild(row);
-      });
-    }
-    await load();
-  });
-
   // ---- Product form (add / edit) -------------------------------------------
   route("product", async (params) => {
     const editing = !!params.id;
@@ -2891,19 +2885,110 @@
       const r = await api.post("/api/admin/bills/clear-all", { confirm: "DELETE ALL BILLS" }); globalToast(r.message); reloadHistory();
     };
 
-    const bills = await api.get("/api/bills");
-    if (!bills.length) { s.appendChild(emptyBlock("\uD83E\uDDFE", "No bills yet.")); return; }
-
-    // Group bills by their IST date. date_ist is "DD-MM-YYYY".
+    // ---- Filters + search bar ----
     const todayIst = new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" }).replace(/\//g, "-");
     const yIst = new Date(Date.now() - 864e5).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" }).replace(/\//g, "-");
-    const groups = [];
-    const byDate = {};
-    bills.forEach((b) => {
-      const key = b.date_ist || "\u2014";
-      if (!byDate[key]) { byDate[key] = []; groups.push(key); }
-      byDate[key].push(b);
+    const isoToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });   // YYYY-MM-DD
+    const isoDaysAgo = (n) => new Date(Date.now() - n * 864e5).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+    const bar = el(`<div class="card">
+      <input class="input bh-search" type="text" placeholder="\uD83D\uDD0D Search bill number"/>
+      <div class="mode-toggle" style="margin-top:8px;flex-wrap:wrap">
+        <button class="mode-btn bh-f active" data-f="all">All</button>
+        <button class="mode-btn bh-f" data-f="today">Today</button>
+        <button class="mode-btn bh-f" data-f="yday">Yesterday</button>
+        <button class="mode-btn bh-f" data-f="7">7 Days</button>
+        <button class="mode-btn bh-f" data-f="30">30 Days</button>
+        <button class="mode-btn bh-f" data-f="custom">Custom</button>
+      </div>
+      <div class="bh-custom rep-minmax" hidden style="margin-top:8px">
+        <div class="field"><label>From</label><input class="input bh-from" type="date"/></div>
+        <div class="field"><label>To</label><input class="input bh-to" type="date"/></div>
+      </div>
+    </div>`);
+    s.appendChild(bar);
+    const listWrap = el(`<div class="bh-list"></div>`);
+    const moreWrap = el(`<div style="text-align:center;padding:16px"></div>`);
+    s.appendChild(listWrap); s.appendChild(moreWrap);
+
+    let filter = "all", offset = 0, loading = false, done = false;
+    const PAGE = 50;
+    let lastDayKey = null, dayAccumEl = null;
+
+    const dateRange = () => {
+      if (filter === "today") return { from: isoToday, to: isoToday };
+      if (filter === "yday") return { from: isoDaysAgo(1), to: isoDaysAgo(1) };
+      if (filter === "7") return { from: isoDaysAgo(6), to: isoToday };
+      if (filter === "30") return { from: isoDaysAgo(29), to: isoToday };
+      if (filter === "custom") return { from: bar.querySelector(".bh-from").value, to: bar.querySelector(".bh-to").value };
+      return {};
+    };
+
+    async function loadPage(reset) {
+      if (loading) return;
+      if (reset) { offset = 0; done = false; listWrap.innerHTML = ""; lastDayKey = null; dayAccumEl = null; }
+      if (done) return;
+      loading = true;
+      moreWrap.textContent = "Loading\u2026";
+      const { from, to } = dateRange();
+      const q = bar.querySelector(".bh-search").value.trim();
+      const params = new URLSearchParams({ limit: PAGE, offset });
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      if (q) params.set("q", q);
+      try {
+        const res = await api.get("/api/bills?" + params.toString());
+        const items = res.items || [];
+        if (offset === 0 && !items.length) {
+          listWrap.appendChild(emptyBlock("\uD83E\uDDFE", q ? "No bills match." : "No bills in this range."));
+        }
+        // Group by IST date with day headers + running day totals.
+        items.forEach((b) => {
+          const key = b.date_ist || "\u2014";
+          if (key !== lastDayKey) {
+            lastDayKey = key;
+            let label = key === todayIst ? "Today" : (key === yIst ? "Yesterday" : key);
+            const header = el(`<div class="day-header"><span class="dh-date">${label}${label !== key ? " \u00B7 " + key : ""}</span><span class="dh-sum"></span></div>`);
+            listWrap.appendChild(header);
+            dayAccumEl = header.querySelector(".dh-sum");
+            dayAccumEl._count = 0; dayAccumEl._sum = 0;
+          }
+          dayAccumEl._count += 1; dayAccumEl._sum += (b.grand_total || 0);
+          dayAccumEl.textContent = `${dayAccumEl._count} bill${dayAccumEl._count === 1 ? "" : "s"} \u00B7 ${money(dayAccumEl._sum)}`;
+          listWrap.appendChild(renderRow(b));
+        });
+        offset += items.length;
+        done = !res.has_more;
+        moreWrap.textContent = done ? (offset > 0 ? "\u2014 end \u2014" : "") : "";
+        if (!done) {
+          const btn = el(`<button class="btn ghost sm">Load more</button>`);
+          btn.onclick = () => loadPage(false);
+          moreWrap.innerHTML = ""; moreWrap.appendChild(btn);
+        }
+      } catch (e) { moreWrap.textContent = e.message; }
+      loading = false;
+    }
+
+    bar.querySelectorAll(".bh-f").forEach((b) => {
+      b.onclick = () => {
+        bar.querySelectorAll(".bh-f").forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+        filter = b.dataset.f;
+        bar.querySelector(".bh-custom").hidden = filter !== "custom";
+        if (filter !== "custom") loadPage(true);
+      };
     });
+    bar.querySelector(".bh-from").onchange = () => { if (bar.querySelector(".bh-to").value) loadPage(true); };
+    bar.querySelector(".bh-to").onchange = () => { if (bar.querySelector(".bh-from").value) loadPage(true); };
+    let st;
+    bar.querySelector(".bh-search").oninput = () => { clearTimeout(st); st = setTimeout(() => loadPage(true), 300); };
+
+    // Infinite scroll: load next page when near the bottom.
+    const onScroll = () => {
+      if (done || loading) return;
+      const nearBottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 400;
+      if (nearBottom) loadPage(false);
+    };
 
     const renderRow = (b) => {
       const row = el(`<div class="card product-card" style="grid-template-columns:1fr auto auto auto;gap:8px;align-items:center">
@@ -2926,84 +3011,12 @@
       return row;
     };
 
-    // Edit ONLY the payment method (and split amounts) of a completed bill.
-    function editPaymentModal(b) {
-      let method = (b.payment_method || "cash").toLowerCase();
-      const total = b.grand_total || 0;
-      const m = el(`<div class="modal"><h3>Edit Payment Method</h3>
-        <div class="sub">${b.bill_number} \u00B7 ${money(total)}</div>
-        <div class="muted sm" style="margin:6px 0 10px">Only the payment method changes. Items, prices and stock are not affected.</div>
-        <div class="pay-grid">
-          <button class="pay-opt em-opt" data-m="cash">\uD83D\uDCB5 Cash</button>
-          <button class="pay-opt em-opt" data-m="upi">\uD83D\uDCF1 UPI</button>
-          <button class="pay-opt em-opt" data-m="card">\uD83D\uDCB3 Card</button>
-          <button class="pay-opt em-opt" data-m="split">\u2702\uFE0F Split</button>
-        </div>
-        <div class="em-split" hidden style="margin-top:10px">
-          <div class="field"><label>\uD83D\uDCB5 Cash</label><input class="input es-cash" type="number" inputmode="decimal" value="0"/></div>
-          <div class="field"><label>\uD83D\uDCF1 UPI</label><input class="input es-upi" type="number" inputmode="decimal" value="0"/></div>
-          <div class="field"><label>\uD83D\uDCB3 Card</label><input class="input es-card" type="number" inputmode="decimal" value="0"/></div>
-          <div class="es-remaining" style="font-weight:700;margin:6px 0"></div>
-        </div>
-        <button class="btn primary em-save" style="margin-top:12px">Save changes</button>
-        <button class="btn ghost em-cancel" style="margin-top:8px">Cancel</button></div>`);
-      const ref = modal(m);
-      const splitBox = m.querySelector(".em-split");
-      const markActive = () => m.querySelectorAll(".em-opt").forEach((x) => x.classList.toggle("active", x.dataset.m === method));
-      const get = (c) => parseFloat(m.querySelector(c).value) || 0;
-      const updSplit = () => {
-        const paid = get(".es-cash") + get(".es-upi") + get(".es-card");
-        const rem = Math.round((total - paid) * 100) / 100;
-        const elx = m.querySelector(".es-remaining");
-        elx.textContent = rem === 0 ? "\u2713 Balanced" : (rem > 0 ? `Remaining: ${money(rem)}` : `Over by ${money(-rem)}`);
-        elx.style.color = rem === 0 ? "#15803d" : "#b91c1c";
-      };
-      // Pre-fill split from existing breakdown if the bill is already split.
-      if (method === "split" && b.payment_breakdown) {
-        m.querySelector(".es-cash").value = b.payment_breakdown.cash || 0;
-        m.querySelector(".es-upi").value = b.payment_breakdown.upi || 0;
-        m.querySelector(".es-card").value = b.payment_breakdown.card || 0;
-      }
-      const syncSplitVisible = () => { splitBox.hidden = method !== "split"; if (method === "split") updSplit(); };
-      m.querySelectorAll(".em-opt").forEach((btn) => {
-        btn.onclick = () => { method = btn.dataset.m; markActive(); syncSplitVisible(); };
-      });
-      m.querySelectorAll(".em-split input").forEach((i) => (i.oninput = updSplit));
-      markActive(); syncSplitVisible();
+    // Edit payment method (uses the shared modal), then reload history.
+    function editPaymentModal(b) { editBillPayment(b, () => go("history")); }
 
-      m.querySelector(".em-cancel").onclick = () => ref.resolve();
-      m.querySelector(".em-save").onclick = async () => {
-        const body = { payment_method: method };
-        if (method === "split") {
-          const parts = { cash: get(".es-cash"), upi: get(".es-upi"), card: get(".es-card") };
-          if (Math.round((parts.cash + parts.upi + parts.card) * 100) / 100 !== Math.round(total * 100) / 100) {
-            alert("Split amounts must add up to the bill total."); return;
-          }
-          body.payment_split = parts;
-        }
-        if (!confirm(`Change payment method of ${b.bill_number} to ${method.toUpperCase()}?`)) return;
-        try {
-          const r = await api.put(`/api/bills/${b.id}/payment-method`, body);
-          ref.resolve();
-          globalToast("Bill updated successfully");
-          go("history");
-        } catch (e) { alert(e.message); }
-      };
-    }
-
-    groups.forEach((key) => {
-      const dayBills = byDate[key];
-      const dayTotal = dayBills.reduce((sum, b) => sum + (b.grand_total || 0), 0);
-      let label = key;
-      if (key === todayIst) label = "Today";
-      else if (key === yIst) label = "Yesterday";
-      const header = el(`<div class="day-header">
-        <span class="dh-date">${label}${label !== key ? ` \u00B7 ${key}` : ""}</span>
-        <span class="dh-sum">${dayBills.length} bill${dayBills.length === 1 ? "" : "s"} \u00B7 ${money(dayTotal)}</span>
-      </div>`);
-      s.appendChild(header);
-      dayBills.forEach((b) => s.appendChild(renderRow(b)));
-    });
+    // Everything is defined — kick off the first page + wire infinite scroll.
+    window.addEventListener("scroll", onScroll, { passive: true });
+    await loadPage(true);
   });
 
   route("bill", async (params) => {
@@ -3054,15 +3067,52 @@
     if (!days.length) { s.appendChild(emptyBlock("\uD83D\uDCC8", "No sales recorded yet.")); return; }
     days.forEach((d) => {
       const card = el(`<div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div class="name">${d.date}</div>
+        <div class="ds-head" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer">
+          <div class="name">${d.date} <span class="ds-caret muted" style="font-size:11px">\u25BC</span></div>
           <button class="btn ghost sm ds-del" title="Delete this day" style="width:auto;color:#b91c1c">\uD83D\uDDD1</button>
         </div>
         <div class="setting-row"><span class="k">Bills</span><span class="v">${d.num_bills}</span></div>
         <div class="setting-row"><span class="k">Sales</span><span class="v">${money(d.total_sales)}</span></div>
         <div class="setting-row"><span class="k">Discount</span><span class="v">\u2212${money(d.total_discount)}</span></div>
-        <div class="setting-row" style="border:none"><span class="k">Net</span><span class="price">${money(d.net_sales)}</span></div></div>`);
-      card.querySelector(".ds-del").onclick = async () => {
+        <div class="setting-row" style="border:none"><span class="k">Net</span><span class="price">${money(d.net_sales)}</span></div>
+        <div class="ds-bills" hidden style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px"></div></div>`);
+
+      const billsBox = card.querySelector(".ds-bills");
+      let loaded = false;
+      card.querySelector(".ds-head").onclick = async (e) => {
+        if (e.target.closest(".ds-del")) return;
+        billsBox.hidden = !billsBox.hidden;
+        card.querySelector(".ds-caret").style.transform = billsBox.hidden ? "" : "rotate(180deg)";
+        if (billsBox.hidden || loaded) return;
+        billsBox.innerHTML = `<div class="muted sm">Loading bills\u2026</div>`;
+        try {
+          const res = await api.get(`/api/bills?from=${d.date}&to=${d.date}&limit=200`);
+          const bills = res.items || [];
+          loaded = true;
+          if (!bills.length) { billsBox.innerHTML = `<div class="muted sm">No bills.</div>`; return; }
+          billsBox.innerHTML = "";
+          bills.forEach((b) => {
+            const row = el(`<div class="card" style="margin:6px 0;padding:10px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div><b>${b.bill_number}</b> <span class="muted sm">${b.time_ist || ""}</span></div>
+                <div class="price">${money(b.grand_total)}</div>
+              </div>
+              <div class="muted sm">${b.total_items} items \u00B7 ${(b.payment_method || "cash").toUpperCase()}</div>
+              <div class="btn-row" style="margin-top:8px;gap:6px">
+                <button class="btn ghost sm dsb-view" style="width:auto">\uD83D\uDC41 View</button>
+                <button class="btn ghost sm dsb-print" style="width:auto">\uD83D\uDDA8 Print</button>
+                <button class="btn ghost sm dsb-edit" style="width:auto">\u270F\uFE0F Payment</button>
+              </div></div>`);
+            row.querySelector(".dsb-view").onclick = () => go("bill", { id: b.id });
+            row.querySelector(".dsb-print").onclick = () => { go("bill", { id: b.id }); setTimeout(() => window.print(), 600); };
+            row.querySelector(".dsb-edit").onclick = () => editBillPayment(b, () => { loaded = false; billsBox.hidden = true; card.querySelector(".ds-head").click(); });
+            billsBox.appendChild(row);
+          });
+        } catch (err) { billsBox.innerHTML = `<div class="msg">${err.message}</div>`; }
+      };
+
+      card.querySelector(".ds-del").onclick = async (e) => {
+        e.stopPropagation();
         if (!confirm(`Delete all sales entries for ${d.date}?\n\nThis action cannot be undone.`)) return;
         try {
           const r = await api.del("/api/sales/daily/" + d.date);
