@@ -123,6 +123,41 @@ def payment_edit_log(bill_id: int):
         return ok(billing_service.payment_edit_history(s, bill_id))
 
 
+@sales_bp.get("/manual")
+def manual_get():
+    from backend.services import manual_sales_service
+    date = request.args.get("date")
+    with session_scope() as s:
+        if date:
+            return ok(manual_sales_service.get_for_date(s, date) or {})
+        return ok(manual_sales_service.list_all(s))
+
+
+@sales_bp.post("/manual")
+def manual_save():
+    from backend.services import manual_sales_service
+    body = request.get_json(silent=True) or {}
+    try:
+        with session_scope() as s:
+            r = manual_sales_service.upsert(
+                s, body.get("date"), body.get("amount"),
+                note=body.get("note"), created_by=body.get("created_by"),
+            )
+        return ok({"entry": r, "message": "Manual sales entry saved"})
+    except ValidationError as exc:
+        return error("validation_error", str(exc), status=400)
+
+
+@sales_bp.delete("/manual/<sale_date>")
+def manual_delete(sale_date: str):
+    from backend.services import manual_sales_service
+    with session_scope() as s:
+        okd = manual_sales_service.delete_for_date(s, sale_date)
+    if not okd:
+        return error("not_found", "No manual entry for that date.", status=404)
+    return ok({"deleted": True, "message": "Manual sales entry deleted"})
+
+
 @sales_bp.get("/daily")
 def daily():
     limit = request.args.get("limit", default=30, type=int)

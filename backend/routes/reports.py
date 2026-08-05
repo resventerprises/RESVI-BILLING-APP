@@ -79,13 +79,24 @@ def view_report():
         data = R._aggregate(s, start, end, **_filters())
         from backend.services import replacement_service
         reps = replacement_service.summary_for_range(s, start, end)
+        # Manual sales entries within the IST range (for days the system was down).
+        from backend.services import manual_sales_service
+        from backend.services.timezone_util import to_ist
+        start_ist = to_ist(start).strftime("%Y-%m-%d")
+        end_ist = to_ist(end).strftime("%Y-%m-%d")
+        manual_total = manual_sales_service.total_for_ist_range(s, start_ist, end_ist)
+        manual_items = manual_sales_service.items_for_ist_range(s, start_ist, end_ist)
+        bills_net = round(data["net"], 2)
         return ok({
             "replacements": {"count": reps["count"], "refund_total": reps["refund_total"],
                              "collected_total": reps["collected_total"]},
             "report_type": rtype, "period": label,
             "total_bills": data["total_bills"], "total_items": data["total_items"],
             "gross": round(data["gross"], 2), "discount": round(data["discount"], 2),
-            "net": round(data["net"], 2),
+            "net": bills_net,
+            "manual_sales_total": manual_total,
+            "manual_sales": manual_items,
+            "overall_sales": round(bills_net + manual_total, 2),
             "payment": {k: round(v, 2) for k, v in data["pay"].items()},
             "cash_sales": data.get("cash_sales", 0), "online_sales": data.get("online_sales", 0),
             "top_products": [{"name": n, "qty": q, "revenue": round(r, 2)}
@@ -112,6 +123,10 @@ def report_pdf():
     try:
         with session_scope() as s:
             data = R._aggregate(s, start, end, **_filters())
+            from backend.services import manual_sales_service
+            from backend.services.timezone_util import to_ist
+            data["manual_sales_total"] = manual_sales_service.total_for_ist_range(
+                s, to_ist(start).strftime("%Y-%m-%d"), to_ist(end).strftime("%Y-%m-%d"))
             # Attach cash drawer info for single-day reports.
             cash = None
             if request.args.get("type", "daily") == "daily":
@@ -147,6 +162,10 @@ def report_excel():
     try:
         with session_scope() as s:
             data = R._aggregate(s, start, end, **_filters())
+            from backend.services import manual_sales_service
+            from backend.services.timezone_util import to_ist as _to_ist
+            data["manual_sales_total"] = manual_sales_service.total_for_ist_range(
+                s, _to_ist(start).strftime("%Y-%m-%d"), _to_ist(end).strftime("%Y-%m-%d"))
             xlsx = R.build_report_excel(data, report_type=rtype, period_label=label)
     except Exception as exc:  # noqa: BLE001
         current_app.logger.exception("report excel failed")

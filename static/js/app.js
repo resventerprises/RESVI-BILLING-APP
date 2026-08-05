@@ -2478,9 +2478,12 @@
               <div><span>Items Sold</span><b>${r.total_items}</b></div>
               <div><span>Gross</span><b>${money(r.gross)}</b></div>
               <div><span>Discount</span><b>${money(r.discount)}</b></div>
-              <div><span>Net Sales</span><b class="net">${money(r.net)}</b></div>
+              <div><span>Net Sales</span><b>${money(r.net)}</b></div>
+              ${r.manual_sales_total ? `<div><span>Manual Entry</span><b style="color:#7c3aed">${money(r.manual_sales_total)}</b></div>` : ""}
+              <div><span>Overall Sales</span><b class="net">${money(r.overall_sales != null ? r.overall_sales : r.net)}</b></div>
             </div>
           </div>
+          ${manualSectionHtml(r)}
           ${(r.top_categories && r.top_categories.length) ? `<div class="card"><div class="rep-h">Top Selling Categories</div>
             ${r.top_categories.map((cat, i) => `
               <div class="cat-row" data-cat="${i}">
@@ -2516,8 +2519,54 @@
             row.classList.toggle("open", !prods.hidden);
           };
         });
+        wireManualSection(r);
       } catch (e) { out.innerHTML = `<div class="msg">${e.message}</div>`; }
     };
+
+    // ---- Manual Daily Sales Entry (only for a single-day report) ----
+    function manualSectionHtml(r) {
+      if (kind !== "daily") return "";   // manual entry is per-date
+      const existing = (r.manual_sales || []).find((m) => true);
+      const amt = existing ? existing.amount : "";
+      const showByDefault = r.total_bills === 0 || !!existing;
+      return `<div class="card manual-sec"${showByDefault ? "" : ' data-collapsed="1"'}>
+        <div class="rep-h">Manual Daily Sales Entry</div>
+        <div class="muted sm" style="margin-bottom:8px">Use this when the billing system was down. It adds to revenue reports only \u2014 no bills, no stock changes.</div>
+        ${existing ? `<div class="ms-saved" style="margin-bottom:8px">
+          <div class="setting-row"><span class="k">Overall Sales</span><span class="price">${money(existing.amount)}</span></div>
+          <div class="muted sm">(Source: Manual Entry \u00B7 saved ${existing.created_at_date} ${existing.created_at_time}${existing.updated_at_time !== existing.created_at_time ? ", edited " + existing.updated_at_time : ""})</div>
+        </div>` : ""}
+        <div class="field"><label>Overall Sales Amount (\u20B9)</label><input class="input ms-amount" type="number" inputmode="decimal" placeholder="0" value="${amt}"/></div>
+        <div class="btn-row" style="gap:8px">
+          <button class="btn primary sm ms-save" style="width:auto">${existing ? "Update" : "Save"} Manual Entry</button>
+          ${existing ? '<button class="btn ghost sm ms-del" style="width:auto;color:#b91c1c">Delete</button>' : ""}
+        </div>
+      </div>`;
+    }
+    function wireManualSection(r) {
+      const sec = out.querySelector(".manual-sec");
+      if (!sec) return;
+      const date = box.querySelector(".f-date").value;
+      sec.querySelector(".ms-save").onclick = async () => {
+        const amount = parseFloat(sec.querySelector(".ms-amount").value);
+        if (isNaN(amount) || amount < 0) { alert("Enter a valid amount."); return; }
+        if (!confirm(`Save manual sales of ${money(amount)} for ${date}?`)) return;
+        try {
+          await api.post("/api/sales/manual", { date, amount });
+          globalToast("Manual entry saved");
+          box.querySelector(".rep-view").click();   // refresh report
+        } catch (e) { alert(e.message); }
+      };
+      const del = sec.querySelector(".ms-del");
+      if (del) del.onclick = async () => {
+        if (!confirm(`Delete the manual sales entry for ${date}?`)) return;
+        try {
+          await api.del("/api/sales/manual/" + date);
+          globalToast("Manual entry deleted");
+          box.querySelector(".rep-view").click();
+        } catch (e) { alert(e.message); }
+      };
+    }
     renderFields();
   });
 

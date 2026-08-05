@@ -209,8 +209,12 @@ def build_report_pdf(data: dict, *, report_type: str, period_label: str,
         ["Total Items Sold", str(data["total_items"])],
         ["Gross Sales", _rupees(data["gross"])],
         ["Total Discount", _rupees(data["discount"])],
-        ["Net Sales", _rupees(data["net"])],
+        ["Net Sales (bills)", _rupees(data["net"])],
     ]
+    _manual = round(data.get("manual_sales_total", 0) or 0, 2)
+    if _manual:
+        summary.append(["Manual Sales Entry", _rupees(_manual)])
+        summary.append(["Overall Sales", _rupees(data["net"] + _manual)])
     st = Table(summary, colWidths=[70 * mm, 100 * mm])
     st.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, -1), LIGHT),
@@ -326,8 +330,12 @@ def build_report_excel(data: dict, *, report_type: str, period_label: str) -> by
     ws.append([])
     for k, v in [("Total Bills", data["total_bills"]), ("Total Items Sold", data["total_items"]),
                  ("Gross Sales", round(data["gross"], 2)), ("Total Discount", round(data["discount"], 2)),
-                 ("Net Sales", round(data["net"], 2))]:
+                 ("Net Sales (bills)", round(data["net"], 2))]:
         ws.append([k, v])
+    _manual = round(data.get("manual_sales_total", 0) or 0, 2)
+    if _manual:
+        ws.append(["Manual Sales Entry", _manual])
+        ws.append(["Overall Sales", round(data["net"] + _manual, 2)])
 
     wb_bills = wb.create_sheet("Bills")
     wb_bills.append(["Bill Number", "Date", "Time", "Items", "Amount"])

@@ -20,16 +20,33 @@ def bill_detail(session: Session, bill_id: int) -> dict:
 
 
 def daily_sales(session: Session, limit: int = 30) -> list[dict]:
-    return [
-        {
+    from backend.services import manual_sales_service
+
+    rows = {
+        s.sale_date: {
             "date": s.sale_date,
             "num_bills": s.num_bills,
             "total_sales": round(s.total_sales, 2),
             "total_discount": round(s.total_discount, 2),
             "net_sales": round(s.net_sales, 2),
+            "manual_sales": 0.0,
         }
         for s in repo.daily_sales.recent(session, limit)
-    ]
+    }
+    # Fold in manual entries: add to an existing day, or surface a manual-only day.
+    for m in manual_sales_service.list_all(session, limit=400):
+        d = m["date"]
+        if d in rows:
+            rows[d]["manual_sales"] = m["amount"]
+            rows[d]["net_sales"] = round(rows[d]["net_sales"] + m["amount"], 2)
+        else:
+            rows[d] = {
+                "date": d, "num_bills": 0, "total_sales": m["amount"],
+                "total_discount": 0.0, "net_sales": m["amount"],
+                "manual_sales": m["amount"],
+            }
+    # Newest date first.
+    return sorted(rows.values(), key=lambda r: r["date"], reverse=True)[:limit]
 
 
 def bill_history_filtered(session, *, date_from=None, date_to=None, query=None,

@@ -364,3 +364,23 @@ class BillPaymentEdit(Base):
     old_breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)
     new_breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False, index=True)
+
+
+class ManualSale(Base):
+    """Manually entered revenue for a date when the billing system was down.
+
+    Used ONLY for revenue reporting (reports, dashboard, daily sales, monthly).
+    It never creates bills, never touches inventory, and never appears in
+    product-wise sales. One row per date (the amount is the whole day's manual
+    revenue). Full audit trail is kept.
+    """
+
+    __tablename__ = "manual_sales"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sale_date: Mapped[str] = mapped_column(String(10), unique=True, index=True, nullable=False)  # YYYY-MM-DD (IST)
+    amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
