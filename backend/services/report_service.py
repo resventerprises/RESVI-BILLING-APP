@@ -391,3 +391,59 @@ def month_range(year: int, month: int) -> tuple[datetime, datetime]:
     last = monthrange(year, month)[1]
     return (datetime.combine(date(year, month, 1), time.min),
             datetime.combine(date(year, month, last), time.max))
+
+
+def day_wise_month(session, year: int, month: int) -> list[dict]:
+    """One row per calendar day of the month: bills count, gross, discount, net,
+    manual entry and overall total. Bills themselves are NOT included here — the
+    UI lazy-loads them per day on expand for performance. Efficient single pass
+    over the month's bills plus one manual-sales lookup.
+    """
+    from calendar import monthrange
+
+    from backend.services import manual_sales_service
+    from backend.services.timezone_util import IST, ist_date_key
+    from database.models import Bill
+
+    start, end = month_range(year, month)
+    # One query for the whole month; bucket by IST date in Python.
+    bills = (session.query(Bill)
+             .filter(Bill.bill_date >= start, Bill.bill_date <= end)
+             .all())
+
+    buckets: dict[str, dict] = {}
+    for b in bills:
+        key = ist_date_key(b.bill_date)   # YYYY-MM-DD (IST)
+        d = buckets.setdefault(key, {"num_bills": 0, "gross": 0.0, "discount": 0.0, "net": 0.0})
+        d["num_bills"] += 1
+        d["gross"] += b.subtotal or 0
+        d["discount"] += b.total_discount or 0
+        d["net"] += b.grand_total or 0
+
+    # Manual entries for the month, keyed by date.
+    last = monthrange(year, month)[1]
+    start_key = f"{year:04d}-{month:02d}-01"
+    end_key = f"{year:04d}-{month:02d}-{last:02d}"
+    manual = {m["date"]: m for m in manual_sales_service.items_for_ist_range(session, start_key, end_key)}
+
+    out = []
+    for day in range(1, last + 1):
+        key = f"{year:04d}-{month:02d}-{day:02d}"
+        b = buckets.get(key)
+        m = manual.get(key)
+        num_bills = b["num_bills"] if b else 0
+        net = round(b["net"], 2) if b else 0.0
+        manual_amt = round(m["amount"], 2) if m else 0.0
+        out.append({
+            "date": key,
+            "label": f"{day:02d}-{['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][month-1]}-{year}",
+            "num_bills": num_bills,
+            "gross": round(b["gross"], 2) if b else 0.0,
+            "discount": round(b["discount"], 2) if b else 0.0,
+            "net": net,
+            "manual_amount": manual_amt,
+            "manual": m,   # full manual record (amount, note, created_by, times) or None
+            "total": round(net + manual_amt, 2),
+            "has_data": bool(num_bills or m),
+        })
+    return out

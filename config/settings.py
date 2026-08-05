@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.20.0-manual-sales"  # manual daily sales entry for reports/dashboard/daily (no bills, no inventory)
+APP_VERSION: str = "1.21.0-daywise-monthly"  # day-wise sales breakdown in monthly reports (lazy-loaded bills)
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

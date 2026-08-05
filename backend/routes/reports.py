@@ -66,6 +66,22 @@ def _resolve_range():
     return None, error("validation_error", "type must be daily, monthly, or custom.")
 
 
+@reports_bp.get("/day-wise")
+def day_wise():
+    """Day-by-day summary for a month (bills count + sales + manual per day)."""
+    from backend.services import report_service as R
+
+    try:
+        year = int(request.args.get("year"))
+        month = int(request.args.get("month"))
+        if not (1 <= month <= 12):
+            raise ValueError
+    except (TypeError, ValueError):
+        return error("validation_error", "Provide numeric year and month (1-12).", status=400)
+    with session_scope() as s:
+        return ok(R.day_wise_month(s, year, month))
+
+
 @reports_bp.get("/view")
 def view_report():
     """JSON summary for on-screen display."""

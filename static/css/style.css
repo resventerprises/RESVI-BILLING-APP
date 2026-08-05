@@ -863,3 +863,12 @@ table { border-collapse: collapse; width: 100%; }
 
 /* ---------- Import history actions ---------- */
 .ih-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* ---------- Day Wise Sales (monthly) ---------- */
+.dw-row { border-bottom: 1px solid var(--border); }
+.dw-row:last-child { border-bottom: none; }
+.dw-head { display: flex; align-items: center; gap: 10px; padding: 10px 0; flex-wrap: wrap; }
+.dw-date { font-weight: 600; min-width: 120px; }
+.dw-nums { flex: 1; color: var(--muted); font-size: 13px; }
+.dw-total { font-weight: 700; }
+.dw-caret { transition: transform .15s; display: inline-block; }

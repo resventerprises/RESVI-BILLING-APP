@@ -2484,6 +2484,7 @@
             </div>
           </div>
           ${manualSectionHtml(r)}
+          ${kind === "monthly" ? '<div class="card daywise-card"><div class="rep-h">Day Wise Sales</div><div class="daywise-list"><div class="muted sm">Loading days\u2026</div></div></div>' : ""}
           ${(r.top_categories && r.top_categories.length) ? `<div class="card"><div class="rep-h">Top Selling Categories</div>
             ${r.top_categories.map((cat, i) => `
               <div class="cat-row" data-cat="${i}">
@@ -2520,8 +2521,86 @@
           };
         });
         wireManualSection(r);
+        if (kind === "monthly") loadDayWise();
       } catch (e) { out.innerHTML = `<div class="msg">${e.message}</div>`; }
     };
+
+    // ---- Day Wise Sales (monthly reports) ----
+    async function loadDayWise() {
+      const wrap = out.querySelector(".daywise-list");
+      if (!wrap) return;
+      const year = box.querySelector(".f-year").value;
+      const month = box.querySelector(".f-month").value;
+      try {
+        const days = await api.get(`/api/reports/day-wise?year=${year}&month=${month}`);
+        wrap.innerHTML = "";
+        days.forEach((d) => {
+          const row = el(`<div class="dw-row">
+            <div class="dw-head" style="cursor:pointer">
+              <div class="dw-date">${d.label} <span class="dw-caret muted" style="font-size:11px">\u25BC</span></div>
+              <div class="dw-nums">
+                ${d.num_bills ? `<span>Bills: ${d.num_bills}</span> \u00B7 <span>${money(d.net)}</span>` : ""}
+                ${d.manual_amount ? `${d.num_bills ? " \u00B7 " : ""}<span style="color:#7c3aed">Manual: ${money(d.manual_amount)}</span>` : ""}
+                ${!d.has_data ? '<span class="muted">No sales recorded</span>' : ""}
+              </div>
+              ${d.has_data ? `<div class="dw-total price">${money(d.total)}</div>` : ""}
+            </div>
+            <div class="dw-body" hidden></div>
+          </div>`);
+          const body = row.querySelector(".dw-body");
+          let loaded = false;
+          row.querySelector(".dw-head").onclick = async () => {
+            body.hidden = !body.hidden;
+            row.querySelector(".dw-caret").style.transform = body.hidden ? "" : "rotate(180deg)";
+            if (body.hidden || loaded) return;
+            if (!d.has_data) { body.innerHTML = `<div class="muted sm" style="padding:8px">No sales recorded.</div>`; loaded = true; return; }
+            body.innerHTML = `<div class="muted sm" style="padding:8px">Loading\u2026</div>`;
+            // Manual-only day: show the manual entry details.
+            let html = "";
+            if (d.manual) {
+              html += `<div class="card" style="margin:6px 0;padding:10px;background:#faf5ff">
+                <div><b>Manual Entry</b></div>
+                <div class="setting-row"><span class="k">Amount</span><span class="v">${money(d.manual.amount)}</span></div>
+                ${d.manual.note ? `<div class="setting-row"><span class="k">Reason</span><span class="v">${d.manual.note}</span></div>` : ""}
+                <div class="setting-row"><span class="k">Created by</span><span class="v">${d.manual.created_by || "\u2014"}</span></div>
+                <div class="setting-row" style="border:none"><span class="k">Created</span><span class="v">${d.manual.created_at_date} ${d.manual.created_at_time}</span></div>
+              </div>`;
+            }
+            // Bills for the day (lazy-loaded).
+            if (d.num_bills) {
+              try {
+                const res = await api.get(`/api/bills?from=${d.date}&to=${d.date}&limit=500`);
+                const bills = res.items || [];
+                bills.forEach((b) => {
+                  const bc = el(`<div class="card" style="margin:6px 0;padding:10px">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                      <div><b>${b.bill_number}</b> <span class="muted sm">${b.time_ist || ""}</span></div>
+                      <div class="price">${money(b.grand_total)}</div>
+                    </div>
+                    <div class="muted sm">${b.total_items} items \u00B7 ${(b.payment_method || "cash").toUpperCase()}</div>
+                    <div class="btn-row" style="margin-top:8px;gap:6px">
+                      <button class="btn ghost sm dw-view" style="width:auto">\uD83D\uDC41 View</button>
+                      <button class="btn ghost sm dw-print" style="width:auto">\uD83D\uDDA8 Print</button>
+                      <button class="btn ghost sm dw-edit" style="width:auto">\u270F\uFE0F Payment</button>
+                    </div></div>`);
+                  bc.querySelector(".dw-view").onclick = () => go("bill", { id: b.id });
+                  bc.querySelector(".dw-print").onclick = () => { go("bill", { id: b.id }); setTimeout(() => window.print(), 600); };
+                  bc.querySelector(".dw-edit").onclick = () => editBillPayment(b, () => box.querySelector(".rep-view").click());
+                  body.appendChild(bc);
+                });
+                // Remove the "Loading…" once bills are in (keep manual html on top).
+                body.querySelector(".muted.sm")?.remove();
+                if (html) body.insertAdjacentHTML("afterbegin", html);
+              } catch (e) { body.innerHTML = `<div class="msg">${e.message}</div>`; }
+            } else {
+              body.innerHTML = html;
+            }
+            loaded = true;
+          };
+          wrap.appendChild(row);
+        });
+      } catch (e) { wrap.innerHTML = `<div class="msg">${e.message}</div>`; }
+    }
 
     // ---- Manual Daily Sales Entry (only for a single-day report) ----
     function manualSectionHtml(r) {
