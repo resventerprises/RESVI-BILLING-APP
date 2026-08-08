@@ -80,7 +80,11 @@ def bill_history_filtered(session, *, date_from=None, date_to=None, query=None,
             pass
     if query and query.strip():
         like = f"%{query.strip()}%"
-        q = q.filter(Bill.bill_number.ilike(like))
+        q = q.filter(
+            (Bill.bill_number.ilike(like))
+            | (Bill.customer_name.ilike(like))
+            | (Bill.customer_mobile.ilike(like))
+        )
 
     total = q.count()
     rows = (q.order_by(Bill.bill_date.desc())

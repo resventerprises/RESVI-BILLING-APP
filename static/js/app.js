@@ -88,6 +88,7 @@
     manual: [], // {name, price, qty} — one-off items, not in DB
     draftId: null, // server-side draft this cart is bound to (null until first item)
     customerName: "",
+    customerMobile: "",
     serialize() {
       return {
         lines: this.lines,
@@ -157,6 +158,7 @@
       this.discountType = null; this.discountValue = 0;
       this.draftId = null;
       this.customerName = "";
+      this.customerMobile = "";
     },
     count() {
       return this.lines.reduce((s, l) => s + l.qty, 0)
@@ -264,7 +266,7 @@
     ].forEach(([r, label, ico]) => {
       const b = el(`<button class="side-item ${act === r ? "active" : ""}" title="${label}">
         <span class="si-ico">${ico}</span><span class="si-label">${label}</span></button>`);
-      b.onclick = () => { closeDrawer(); go(r); };
+      b.onclick = () => { closeDrawer(); if (r === "scan") startNewBill(); else go(r); };
       nav.appendChild(b);
     });
     sb.appendChild(nav);
@@ -273,6 +275,43 @@
   // ---- Router ---------------------------------------------------------------
   const routes = {};
   const route = (name, fn) => (routes[name] = fn);
+  // New Bill entry point: show the optional Customer Details popup FIRST, then
+  // open the billing screen. Only for genuinely NEW bills — resuming a draft,
+  // viewing/printing/editing a bill, refunds and replacements never call this.
+  function startNewBill() {
+    // Only prompt when starting fresh (no items in the current cart).
+    const m = el(`<div class="modal cust-modal"><h3 style="text-align:center">Customer Details</h3>
+      <div class="field"><label>Customer Name</label><input class="input cust-name" type="text" placeholder="Optional" autocomplete="off"/></div>
+      <div class="field"><label>Phone Number</label><input class="input cust-mobile" type="tel" inputmode="numeric" placeholder="Optional" autocomplete="off"/></div>
+      <button class="btn primary cust-continue" style="margin-top:6px">Submit / Continue</button>
+      <button class="btn cust-close" style="margin-top:8px;background:#dc2626;color:#fff">\u2715 Close</button></div>`);
+    const ref = modal(m);
+    const nameEl = m.querySelector(".cust-name");
+    const mobileEl = m.querySelector(".cust-mobile");
+    // If a known phone is typed, offer to prefill the saved name.
+    let lookupT;
+    mobileEl.oninput = () => {
+      clearTimeout(lookupT);
+      const mob = mobileEl.value.trim();
+      if (mob.length < 6) return;
+      lookupT = setTimeout(async () => {
+        try {
+          const cust = await api.get("/api/customers/lookup?mobile=" + encodeURIComponent(mob));
+          if (cust && cust.name && !nameEl.value.trim()) nameEl.value = cust.name;
+        } catch (_) {}
+      }, 350);
+    };
+    const proceed = (withDetails) => {
+      cart.customerName = withDetails ? nameEl.value.trim() : "";
+      cart.customerMobile = withDetails ? mobileEl.value.trim() : "";
+      ref.resolve();
+      go("scan");
+    };
+    m.querySelector(".cust-continue").onclick = () => proceed(true);
+    m.querySelector(".cust-close").onclick = () => proceed(false);   // skip, open bill anyway
+    setTimeout(() => nameEl.focus(), 50);
+  }
+
   function go(name, params) {
     location.hash = name + (params ? "?" + new URLSearchParams(params) : "");
   }
@@ -442,7 +481,7 @@
     const make = (label, ico, target, primary) => {
       const t = el(`<button class="tile ${primary ? "primary" : ""}">
         <div class="ico">${ico}</div><div class="label">${label}</div></button>`);
-      t.onclick = () => go(target);
+      t.onclick = () => { if (target === "scan") startNewBill(); else go(target); };
       return t;
     };
     // Generated from the shared MODULES list so mobile shows every module and
@@ -461,7 +500,7 @@
       <div><h2>Welcome back</h2><div class="muted">Here's your store at a glance.</div></div>
       <button class="btn primary newbill" style="width:auto;padding:0 26px">\uD83D\uDCF7 New bill</button>
     </div>`));
-    s.querySelector(".newbill").onclick = () => go("scan");
+    s.querySelector(".newbill").onclick = () => startNewBill();
 
     const stats = el(`<div class="stat-grid"></div>`);
     s.appendChild(stats);
@@ -1537,6 +1576,8 @@
     try {
       const payload = { items: cart.payload(), payment_method: pay };
       if (cart.draftId) payload.draft_id = cart.draftId;
+      if (cart.customerName) payload.customer_name = cart.customerName;
+      if (cart.customerMobile) payload.customer_mobile = cart.customerMobile;
       if (cart.finalAmount != null) payload.final_amount = cart.finalAmount;
       if (cart.discountType && cart.discountValue) { payload.discount_type = cart.discountType; payload.discount_value = cart.discountValue; }
       if (cart.manual.length) payload.manual_items = cart.manualPayload();

@@ -180,6 +180,9 @@ class Bill(Base):
     grand_total: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     payment_method: Mapped[str] = mapped_column(String(16), default="cash", nullable=False)
     payment_breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON for SPLIT
+    # Optional customer captured at billing time (never mandatory).
+    customer_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    customer_mobile: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
 
     items: Mapped[list["BillItem"]] = relationship(
         back_populates="bill", cascade="all, delete-orphan"
@@ -384,3 +387,21 @@ class ManualSale(Base):
     created_by: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+
+
+class Customer(Base):
+    """Lightweight customer directory for lookup and dedup by phone.
+
+    Created/updated opportunistically when a bill captures customer details.
+    Never required for billing. Deduped by mobile number.
+    """
+
+    __tablename__ = "customers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    mobile: Mapped[str | None] = mapped_column(String(20), unique=True, index=True, nullable=True)
+    total_bills: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_spent: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    first_seen: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    last_seen: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)

@@ -28,7 +28,9 @@ def complete_bill(session: Session, cart_items: list[dict], payment_method: str 
                   manual_items: list[dict] | None = None,
                   payment_split: dict | None = None,
                   discount_type: str | None = None,
-                  discount_value: float | None = None) -> Bill:
+                  discount_value: float | None = None,
+                  customer_name: str | None = None,
+                  customer_mobile: str | None = None) -> Bill:
     """cart_items: [{"product_id": int, "quantity": int}, ...]
 
     manual_items: [{"name": str, "price": float, "quantity": int}, ...] — one-off
@@ -183,6 +185,10 @@ def complete_bill(session: Session, cart_items: list[dict], payment_method: str 
         payment_method = "split"
         breakdown_json = _json.dumps(parts)
 
+    # Optional customer capture (never mandatory). Normalise blanks to None.
+    cust_name = (customer_name or "").strip() or None
+    cust_mobile = (customer_mobile or "").strip() or None
+
     repo.bills.update(
         session,
         bill,
@@ -194,7 +200,18 @@ def complete_bill(session: Session, cart_items: list[dict], payment_method: str 
         grand_total=grand_total,
         payment_method=payment_method,
         payment_breakdown=breakdown_json,
+        customer_name=cust_name,
+        customer_mobile=cust_mobile,
     )
+
+    # Maintain the customer directory (dedup by mobile). Purely for lookup —
+    # never blocks billing, and failures here don't affect the bill.
+    if cust_name or cust_mobile:
+        try:
+            from backend.services import customer_service
+            customer_service.record_bill(session, cust_name, cust_mobile, grand_total)
+        except Exception:
+            pass
 
     _roll_daily(session, bill)
     # Deduct sold quantities from inventory.
@@ -256,6 +273,8 @@ def serialize_bill(bill: Bill, session: Session, with_items: bool = False) -> di
         "grand_total": bill.grand_total,
         "payment_method": getattr(bill, "payment_method", "cash"),
         "payment_breakdown": breakdown,
+        "customer_name": getattr(bill, "customer_name", None) or "",
+        "customer_mobile": getattr(bill, "customer_mobile", None) or "",
     }
     if with_items:
         data["items"] = [

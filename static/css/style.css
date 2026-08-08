@@ -872,3 +872,8 @@ table { border-collapse: collapse; width: 100%; }
 .dw-nums { flex: 1; color: var(--muted); font-size: 13px; }
 .dw-total { font-weight: 700; }
 .dw-caret { transition: transform .15s; display: inline-block; }
+
+/* ---------- Customer Details popup ---------- */
+.cust-modal .field { margin-bottom: 12px; }
+.cust-modal .cust-close { border: none; }
+.cust-modal .cust-close:hover { background: #b91c1c !important; }

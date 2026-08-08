@@ -11,6 +11,23 @@ from utils.validators import ValidationError
 scan_bp = Blueprint("scan", __name__, url_prefix="/api/scan")
 billing_bp = Blueprint("billing", __name__, url_prefix="/api/bills")
 sales_bp = Blueprint("sales", __name__, url_prefix="/api/sales")
+customers_bp = Blueprint("customers", __name__, url_prefix="/api/customers")
+
+
+@customers_bp.get("")
+def customers_list():
+    from backend.services import customer_service
+    with session_scope() as s:
+        return ok(customer_service.search(s, request.args.get("q")))
+
+
+@customers_bp.get("/lookup")
+def customers_lookup():
+    """Look up a customer by exact mobile — used to prefill the name field."""
+    from backend.services import customer_service
+    mobile = request.args.get("mobile", "")
+    with session_scope() as s:
+        return ok(customer_service.lookup_by_mobile(s, mobile) or {})
 
 
 @scan_bp.post("")
@@ -42,10 +59,12 @@ def complete():
     payment_split = body.get("payment_split", None)
     discount_type = body.get("discount_type", None)
     discount_value = body.get("discount_value", None)
+    customer_name = body.get("customer_name", None)
+    customer_mobile = body.get("customer_mobile", None)
     draft_id = body.get("draft_id", None)
     try:
         with session_scope() as s:
-            bill = billing_service.complete_bill(s, items, payment_method, final_amount=final_amount, manual_items=manual_items, payment_split=payment_split, discount_type=discount_type, discount_value=discount_value)
+            bill = billing_service.complete_bill(s, items, payment_method, final_amount=final_amount, manual_items=manual_items, payment_split=payment_split, discount_type=discount_type, discount_value=discount_value, customer_name=customer_name, customer_mobile=customer_mobile)
             # A held bill that gets paid moves out of Drafts into Bill History.
             if draft_id:
                 from backend.services import draft_service

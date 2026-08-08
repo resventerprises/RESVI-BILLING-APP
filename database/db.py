@@ -93,6 +93,10 @@ def _ensure_columns() -> None:
         "bill_items": [
             ("item_name", "VARCHAR(200)"),
         ],
+        "bills": [
+            ("customer_name", "VARCHAR(120)"),
+            ("customer_mobile", "VARCHAR(20)"),
+        ],
         "import_batches": [
             ("status", "VARCHAR(16) NOT NULL DEFAULT 'active'"),
             ("file_data", blob_type),
