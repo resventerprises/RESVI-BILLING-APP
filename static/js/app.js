@@ -3061,7 +3061,7 @@
     const isoDaysAgo = (n) => new Date(Date.now() - n * 864e5).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
     const bar = el(`<div class="card">
-      <input class="input bh-search" type="text" placeholder="\uD83D\uDD0D Search bill number"/>
+      <input class="input bh-search" type="text" placeholder="\uD83D\uDD0D Search by customer name, phone or bill number"/>
       <div class="mode-toggle" style="margin-top:8px;flex-wrap:wrap">
         <button class="mode-btn bh-f active" data-f="all">All</button>
         <button class="mode-btn bh-f" data-f="today">Today</button>
@@ -3160,9 +3160,14 @@
     };
 
     const renderRow = (b) => {
+      const cust = (b.customer_name || b.customer_mobile)
+        ? `<div class="bh-cust"><b>${b.customer_name || "Customer"}</b>${b.customer_mobile ? ` <span class="muted sm">${b.customer_mobile}</span>` : ""}</div>`
+        : `<div class="bh-cust muted">Walk-in Customer</div>`;
       const row = el(`<div class="card product-card" style="grid-template-columns:1fr auto auto auto;gap:8px;align-items:center">
-        <div class="bill-open" style="cursor:pointer"><div class="name">${b.bill_number}</div>
-          <div class="meta">${b.time_ist || ""} \u00B7 ${b.total_items} items \u00B7 ${(b.payment_method || "cash").toUpperCase()}</div></div>
+        <div class="bill-open" style="cursor:pointer">
+          ${cust}
+          <div class="name" style="font-size:14px">${b.bill_number}</div>
+          <div class="meta">${b.date_ist || ""} \u00B7 ${b.time_ist || ""} \u00B7 ${b.total_items} items \u00B7 ${(b.payment_method || "cash").toUpperCase()}</div></div>
         <div class="price">${money(b.grand_total)}</div>
         <button class="btn ghost sm bill-edit" title="Edit payment method" style="width:auto">\u270F\uFE0F</button>
         <button class="btn ghost sm bill-del" title="Delete bill" style="width:auto">\uD83D\uDDD1</button></div>`);
@@ -3193,11 +3198,30 @@
     const s = screen();
     view.appendChild(s);
     const b = await api.get("/api/bills/" + params.id);
+    // Header with bill number + date/time.
     s.appendChild(el(`<div class="card"><div class="name">${b.bill_number}</div>
       <div class="meta">${b.date_ist || ""} ${b.time_ist || ""}</div></div>`));
+
+    // Customer card (shows saved details, or "Walk-in Customer").
+    const hasCust = b.customer_name || b.customer_mobile;
+    const custCard = el(`<div class="card">
+      <div class="rep-h">Customer</div>
+      ${hasCust ? `
+        ${b.customer_name ? `<div class="setting-row"><span class="k">Name</span><span class="v">${b.customer_name}</span></div>` : ""}
+        ${b.customer_mobile ? `<div class="setting-row" style="border:none"><span class="k">Phone</span><span class="v">${b.customer_mobile}</span></div>` : ""}
+        ${b.customer_mobile ? `<button class="btn ghost sm cust-history" style="width:auto;margin-top:8px">\uD83D\uDCCB View purchase history</button>` : ""}
+      ` : `<div class="muted">Walk-in Customer (no details captured)</div>`}
+    </div>`);
+    s.appendChild(custCard);
+    if (b.customer_mobile) {
+      custCard.querySelector(".cust-history").onclick = () => customerHistoryModal(b.customer_mobile, b.customer_name);
+    }
+
+    // Products purchased.
+    s.appendChild(el(`<div class="rep-h" style="margin:14px 4px 6px">Products (${b.items.length})</div>`));
     b.items.forEach((it) =>
       s.appendChild(
-        el(`<div class="cart-line"><div>${it.product_name}<div class="meta">${money(it.unit_price)} \u00D7 ${it.quantity}</div></div>
+        el(`<div class="cart-line"><div>${it.product_name}${it.manual ? ' <span class="pill" style="background:#7c3aed">Manual</span>' : ""}<div class="meta">${money(it.unit_price)} \u00D7 ${it.quantity}</div></div>
           <div></div><div class="price">${money(it.total_price)}</div></div>`)
       )
     );
@@ -3216,7 +3240,44 @@
       <div class="setting-row"><span class="k">Grand total</span><span class="price">${money(b.grand_total)}</span></div>
       ${payHtml}
     </div>`));
+    // Actions: print + edit payment.
+    const acts = el(`<div class="btn-row" style="margin-top:14px;gap:8px">
+      <button class="btn ghost bd-print" style="width:auto">\uD83D\uDDA8 Print</button>
+      <button class="btn ghost bd-edit" style="width:auto">\u270F\uFE0F Edit Payment</button>
+    </div>`);
+    acts.querySelector(".bd-print").onclick = () => window.print();
+    acts.querySelector(".bd-edit").onclick = () => editBillPayment(b, () => go("bill", { id: b.id }));
+    s.appendChild(acts);
   });
+
+  // Customer purchase-history popup (all bills for a phone number).
+  async function customerHistoryModal(mobile, name) {
+    const m = el(`<div class="modal" style="max-width:520px"><h3>Purchase History</h3>
+      <div class="sub ch-sub">${name || "Customer"} \u00B7 ${mobile}</div>
+      <div class="ch-summary muted sm" style="margin:6px 0">Loading\u2026</div>
+      <div class="ch-list" style="max-height:50vh;overflow-y:auto"></div>
+      <button class="btn ghost ch-close" style="margin-top:10px">Close</button></div>`);
+    const ref = modal(m);
+    m.querySelector(".ch-close").onclick = () => ref.resolve();
+    try {
+      const data = await api.get("/api/customers/history?mobile=" + encodeURIComponent(mobile));
+      const bills = data.bills || [];
+      m.querySelector(".ch-summary").textContent =
+        `${data.total_bills} bill${data.total_bills === 1 ? "" : "s"} \u00B7 Total spent ${money(data.total_spent)}`;
+      const list = m.querySelector(".ch-list");
+      if (!bills.length) { list.innerHTML = `<div class="muted sm">No bills found.</div>`; return; }
+      bills.forEach((bl) => {
+        const row = el(`<div class="card" style="margin:6px 0;padding:10px;cursor:pointer">
+          <div style="display:flex;justify-content:space-between">
+            <div><b>${bl.bill_number}</b> <span class="muted sm">${bl.date_ist} ${bl.time_ist}</span></div>
+            <div class="price">${money(bl.grand_total)}</div>
+          </div>
+          <div class="muted sm">${bl.total_items} items \u00B7 ${(bl.payment_method || "cash").toUpperCase()}</div></div>`);
+        row.onclick = () => { ref.resolve(); go("bill", { id: bl.id }); };
+        list.appendChild(row);
+      });
+    } catch (e) { m.querySelector(".ch-summary").textContent = e.message; }
+  }
 
   // ---- Daily sales ----------------------------------------------------------
   route("daily", async () => {

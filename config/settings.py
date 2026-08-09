@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.22.0-customer-details"  # optional customer details popup before new bill; customer saved on bill + dedup directory + search
+APP_VERSION: str = "1.23.0-customer-history"  # customer name in bill history + bill detail customer section + purchase history
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

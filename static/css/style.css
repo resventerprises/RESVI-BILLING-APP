@@ -877,3 +877,7 @@ table { border-collapse: collapse; width: 100%; }
 .cust-modal .field { margin-bottom: 12px; }
 .cust-modal .cust-close { border: none; }
 .cust-modal .cust-close:hover { background: #b91c1c !important; }
+
+/* ---------- Bill history customer line ---------- */
+.bh-cust { font-size: 14px; margin-bottom: 2px; }
+.bh-cust.muted { font-style: italic; }

@@ -69,3 +69,26 @@ def lookup_by_mobile(session: Session, mobile: str) -> dict | None:
         return None
     c = session.scalar(select(Customer).where(Customer.mobile == mobile.strip()))
     return _serialize(c) if c else None
+
+
+def purchase_history(session: Session, mobile: str, limit: int = 200) -> dict:
+    """All bills for a phone number, plus totals. Server-side — never loads the
+    whole bill table into the browser."""
+    from backend.services.billing_service import serialize_bill
+    from database.models import Bill
+
+    mobile = (mobile or "").strip()
+    if not mobile:
+        return {"total_bills": 0, "total_spent": 0.0, "bills": []}
+    rows = (session.query(Bill)
+            .filter(Bill.customer_mobile == mobile)
+            .order_by(Bill.bill_date.desc())
+            .limit(limit).all())
+    bills = [serialize_bill(b, session) for b in rows]
+    total_spent = round(sum(b["grand_total"] or 0 for b in bills), 2)
+    return {
+        "mobile": mobile,
+        "total_bills": len(bills),
+        "total_spent": total_spent,
+        "bills": bills,
+    }

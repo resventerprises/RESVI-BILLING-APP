@@ -30,6 +30,15 @@ def customers_lookup():
         return ok(customer_service.lookup_by_mobile(s, mobile) or {})
 
 
+@customers_bp.get("/history")
+def customers_history():
+    """All bills + totals for a phone number (server-side)."""
+    from backend.services import customer_service
+    mobile = request.args.get("mobile", "")
+    with session_scope() as s:
+        return ok(customer_service.purchase_history(s, mobile))
+
+
 @scan_bp.post("")
 def scan():
     """Multipart 'frame' (image) OR raw image body. Returns a recognition
