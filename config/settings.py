@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.23.0-customer-history"  # customer name in bill history + bill detail customer section + purchase history
+APP_VERSION: str = "1.23.1-manual-qty-aiscan"  # render manual items with +/- qty controls on AI Scanner screen too (main scan already had them)
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 

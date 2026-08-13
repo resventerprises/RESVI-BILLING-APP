@@ -150,6 +150,12 @@
       line.qty = Math.max(0, qty);
       if (line.qty === 0) this.lines = this.lines.filter((l) => l.product_id !== productId);
     },
+    setManualQty(index, qty) {
+      const m = this.manual[index];
+      if (!m) return;
+      // Manual items keep a minimum of 1 (use Remove to delete a row).
+      m.qty = Math.max(1, qty);
+    },
     clear() {
       this.lines = [];
       this.manual = [];
@@ -706,13 +712,15 @@
         row.querySelector(".plus").onclick = () => { cart.setQty(l.product_id, l.qty + 1); cart.finalAmount = null; refreshBill(); };
         listEl.appendChild(row);
       });
-      // Manual (one-off) items.
+      // Manual (one-off) items — same [-] n [+] control as normal products.
       cart.manual.forEach((m, i) => {
         const row = el(`<div class="bill-line">
           <div class="bl-thumb ph">\u270F\uFE0F</div>
           <div class="bl-name">${m.name}<div class="bl-unit">manual \u00B7 ${money(m.price)} each</div></div>
-          <div class="bl-qty"><span>x${m.qty}</span></div>
+          <div class="bl-qty"><button class="minus">\u2212</button><span>${m.qty}</span><button class="plus">+</button></div>
           <div class="bl-amt">${money(m.price * m.qty)} <button class="mrm" title="Remove" style="border:none;background:none;cursor:pointer;color:#b91c1c">\u00D7</button></div></div>`);
+        row.querySelector(".minus").onclick = () => { cart.setManualQty(i, m.qty - 1); cart.finalAmount = null; refreshBill(); };
+        row.querySelector(".plus").onclick = () => { cart.setManualQty(i, m.qty + 1); cart.finalAmount = null; refreshBill(); };
         row.querySelector(".mrm").onclick = () => { cart.manual.splice(i, 1); cart.finalAmount = null; refreshBill(); };
         listEl.appendChild(row);
       });
@@ -1102,7 +1110,7 @@
       scr.querySelector(".count").textContent = cart.count() + " item" + (cart.count() === 1 ? "" : "s");
       scr.querySelector(".total").textContent = money(cart.total());
       listEl.innerHTML = "";
-      if (!cart.lines.length) {
+      if (!cart.lines.length && !cart.manual.length) {
         listEl.appendChild(el(`<div class="bill-empty">No items yet.<br/>Scan a product to begin.</div>`));
         return;
       }
@@ -1114,6 +1122,18 @@
           <div class="bl-amt">${money((l.price - l.discount) * l.qty)}</div></div>`);
         row.querySelector(".minus").onclick = () => { cart.setQty(l.product_id, l.qty - 1); refreshBill(); };
         row.querySelector(".plus").onclick = () => { cart.setQty(l.product_id, l.qty + 1); refreshBill(); };
+        listEl.appendChild(row);
+      });
+      // Manual (one-off) items — same [-] n [+] control as normal products.
+      cart.manual.forEach((m, i) => {
+        const row = el(`<div class="bill-line">
+          <div class="bl-thumb ph">\u270F\uFE0F</div>
+          <div class="bl-name">${m.name}<div class="bl-unit">manual \u00B7 ${money(m.price)} each</div></div>
+          <div class="bl-qty"><button class="minus">\u2212</button><span>${m.qty}</span><button class="plus">+</button></div>
+          <div class="bl-amt">${money(m.price * m.qty)} <button class="mrm" title="Remove" style="border:none;background:none;cursor:pointer;color:#b91c1c">\u00D7</button></div></div>`);
+        row.querySelector(".minus").onclick = () => { cart.setManualQty(i, m.qty - 1); refreshBill(); };
+        row.querySelector(".plus").onclick = () => { cart.setManualQty(i, m.qty + 1); refreshBill(); };
+        row.querySelector(".mrm").onclick = () => { cart.manual.splice(i, 1); refreshBill(); };
         listEl.appendChild(row);
       });
     };
