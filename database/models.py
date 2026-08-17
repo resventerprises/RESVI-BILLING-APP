@@ -405,3 +405,15 @@ class Customer(Base):
     total_spent: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     first_seen: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+
+
+class OpeningCashEdit(Base):
+    """Audit log for opening-cash corrections. One row per edit."""
+
+    __tablename__ = "opening_cash_edits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    drawer_date: Mapped[str] = mapped_column(String(10), index=True, nullable=False)  # YYYY-MM-DD (IST)
+    old_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    new_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)

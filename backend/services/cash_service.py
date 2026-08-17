@@ -183,6 +183,65 @@ def open_day(session: Session, opening_cash: float) -> dict:
     return _serialize(session, row)
 
 
+def edit_opening_cash(session: Session, new_amount: float) -> dict:
+    """Correct today's opening cash IN PLACE on the existing drawer row.
+
+    Only opening_cash changes. Expenses, close state, sales, refunds and every
+    other figure are untouched — and because expected_cash is computed live from
+    opening_cash, the whole drawer/cash-flow rebalances automatically. Never
+    creates a second row (one row per IST date, keyed by drawer_date).
+    """
+    from utils.validators import ValidationError
+
+    try:
+        amt = round(float(new_amount), 2)
+    except (TypeError, ValueError):
+        raise ValidationError("Opening cash must be a number.")
+    if amt < 0:
+        raise ValidationError("Opening cash cannot be negative.")
+
+    tkey = today_key()
+    row = session.get(CashDrawer, tkey)
+    if row is None or not row.opened:
+        raise ValidationError("Opening cash has not been set for today yet.")
+
+    old = round(row.opening_cash or 0, 2)
+    row.opening_cash = amt   # in-place update; opened stays True, nothing else reset
+
+    # Audit trail (best-effort; never blocks the correction).
+    try:
+        _log_opening_edit(session, tkey, old, amt)
+    except Exception:
+        pass
+    return _serialize(session, row)
+
+
+def _log_opening_edit(session: Session, drawer_date: str, old: float, new: float) -> None:
+    from database.models import OpeningCashEdit
+
+    session.add(OpeningCashEdit(
+        drawer_date=drawer_date, old_amount=old, new_amount=new,
+    ))
+    session.flush()
+
+
+def opening_edit_history(session: Session, drawer_date: str | None = None) -> list[dict]:
+    from database.models import OpeningCashEdit
+    from backend.services.timezone_util import ist_date_str, ist_time_str
+
+    q = session.query(OpeningCashEdit)
+    if drawer_date:
+        q = q.filter(OpeningCashEdit.drawer_date == drawer_date)
+    rows = q.order_by(OpeningCashEdit.created_at.desc()).all()
+    return [{
+        "drawer_date": r.drawer_date,
+        "old_amount": round(r.old_amount or 0, 2),
+        "new_amount": round(r.new_amount or 0, 2),
+        "date": ist_date_str(r.created_at) if r.created_at else "",
+        "time": ist_time_str(r.created_at) if r.created_at else "",
+    } for r in rows]
+
+
 def save_expenses(session: Session, expenses: float) -> dict:
     row = get_or_create(session, today_key())
     row.cash_expenses = round(float(expenses), 2)

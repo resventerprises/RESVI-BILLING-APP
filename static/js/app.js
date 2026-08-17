@@ -2288,7 +2288,7 @@
 
     const card = el(`<div class="card">
       <div class="rep-h">Today \u00B7 ${st.date}</div>
-      <div class="setting-row"><span class="k">Opening Cash</span><span class="v">${money(st.opening_cash)}</span></div>
+      <div class="setting-row"><span class="k">Opening Cash</span><span class="v" style="display:flex;gap:8px;align-items:center">${money(st.opening_cash)}<button class="btn ghost sm oc-edit" title="Edit opening cash" style="width:auto">\u270F\uFE0F Edit</button></span></div>
       <div class="setting-row"><span class="k">Today's CASH Sales</span><span class="v">${money(st.cash_sales)}</span></div>
       <div class="setting-row"><span class="k">Total Cash Expenses</span><span class="v">${money(st.cash_expenses)}</span></div>
       ${st.refunds > 0 ? `<div class="setting-row"><span class="k">Cash Refunds</span><span class="v" style="color:#b91c1c">-${money(st.refunds)}</span></div>` : ""}
@@ -2332,17 +2332,35 @@
     renderExpenses(st.expenses || []);
     expCard.querySelector(".exp-add").onclick = () => expenseDialog(null);
 
+    // Edit Opening Cash — modal with Save Changes / Cancel + confirmation.
+    function editOpeningCashModal() {
+      const m = el(`<div class="modal"><h3>Edit Opening Cash</h3>
+        <div class="sub">${st.date}</div>
+        <div class="setting-row"><span class="k">Current Opening Cash</span><span class="v">${money(st.opening_cash)}</span></div>
+        <div class="field" style="margin-top:10px"><label>New Opening Cash (\u20B9)</label>
+          <input class="input oc-amount" type="number" inputmode="decimal" value="${st.opening_cash}"/></div>
+        <div class="muted sm" style="margin-bottom:10px">Only opening cash changes. Sales, expenses, refunds and all other records stay exactly as they are \u2014 the drawer rebalances automatically.</div>
+        <button class="btn primary oc-save" style="margin-top:4px">Save Changes</button>
+        <button class="btn ghost oc-cancel" style="margin-top:8px">Cancel</button></div>`);
+      const ref = modal(m);
+      m.querySelector(".oc-cancel").onclick = () => ref.resolve();
+      m.querySelector(".oc-save").onclick = async () => {
+        const n = parseFloat(m.querySelector(".oc-amount").value);
+        if (isNaN(n) || n < 0) { alert("Enter a valid amount."); return; }
+        if (!confirm(`Change opening cash from ${money(st.opening_cash)} to ${money(n)}?`)) return;
+        try {
+          const r = await api.post("/api/cash/edit-opening", { opening_cash: n });
+          ref.resolve();
+          globalToast(r.message || "Opening cash updated successfully");
+          render();
+        } catch (e) { alert(e.message); }
+      };
+    }
+    card.querySelector(".oc-edit").onclick = () => editOpeningCashModal();
+
     const closeBtn = el(`<button class="btn primary" style="margin-bottom:8px">\uD83C\uDF19 Close Day (Count Cash)</button>`);
     closeBtn.onclick = () => openCloseDialog(st);
     s.appendChild(closeBtn);
-    const editOpen = el(`<button class="btn ghost sm" style="width:auto">Edit Opening Cash</button>`);
-    editOpen.onclick = async () => {
-      const v = prompt("Opening cash for today:", st.opening_cash);
-      if (v === null) return;
-      const n = parseFloat(v); if (isNaN(n) || n < 0) return alert("Enter a valid amount.");
-      await api.post("/api/cash/open", { opening_cash: n }); render();
-    };
-    s.appendChild(editOpen);
 
     // History
     const hist = await api.get("/api/cash/history");

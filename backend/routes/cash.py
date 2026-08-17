@@ -29,6 +29,26 @@ def open_day():
         return ok(cash_service.open_day(s, opening))
 
 
+@cash_bp.post("/edit-opening")
+def edit_opening():
+    """Correct today's opening cash in place (does not create a new drawer)."""
+    from utils.validators import ValidationError
+
+    body = request.get_json(silent=True) or {}
+    try:
+        with session_scope() as s:
+            data = cash_service.edit_opening_cash(s, body.get("opening_cash"))
+        return ok({"drawer": data, "message": "Opening cash updated successfully"})
+    except ValidationError as exc:
+        return error("validation_error", str(exc), status=400)
+
+
+@cash_bp.get("/opening-edits")
+def opening_edits():
+    with session_scope() as s:
+        return ok(cash_service.opening_edit_history(s, request.args.get("date")))
+
+
 @cash_bp.post("/expenses")
 def expenses():
     body = request.get_json(silent=True) or {}

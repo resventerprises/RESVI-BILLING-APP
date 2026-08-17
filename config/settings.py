@@ -51,7 +51,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # --- App ---------------------------------------------------------------------
 APP_NAME: str = "RESVI"
-APP_VERSION: str = "1.23.1-manual-qty-aiscan"  # render manual items with +/- qty controls on AI Scanner screen too (main scan already had them)
+APP_VERSION: str = "1.24.0-edit-opening-cash"  # edit opening cash in place (recomputes drawer live, no duplicate row, audited)
 DEBUG: bool = _env_bool("RESVI_DEBUG", True)
 
 
